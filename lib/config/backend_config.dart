@@ -20,6 +20,26 @@ class BackendConfig {
   /// Token JWT del usuario con rol staff/admin para autorizar peticiones.
   static String staffAuthToken = '';
 
+  /// Último token NFC emitido para facilitar pruebas rápidas en eventos.
+  static String lastIssuedNfcToken = '';
+
+  /// Indica si está activo el modo simulación offline.
+  static bool get isSimulation => mode == BackendMode.simulation;
+
+  /// Etiqueta legible del modo actual.
+  static String get modeLabel {
+    switch (mode) {
+      case BackendMode.tunnel:
+        return 'Túnel HTTPS';
+      case BackendMode.localNetwork:
+        return 'Red Local Wi-Fi';
+      case BackendMode.cloud:
+        return 'Supabase Cloud';
+      case BackendMode.simulation:
+        return 'Simulación Offline';
+    }
+  }
+
   /// Devuelve la URL base según el modo seleccionado.
   static String get functionsUrl {
     switch (mode) {

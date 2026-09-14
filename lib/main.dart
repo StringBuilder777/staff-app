@@ -20,9 +20,14 @@ class StaffApp extends StatelessWidget {
   );
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -32,7 +37,10 @@ class HomeScreen extends StatelessWidget {
         IconButton(
           icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
           tooltip: 'Configuración de conexión',
-          onPressed: () => _showConfigSheet(context),
+          onPressed: () async {
+            await _showConfigSheet(context);
+            setState(() {});
+          },
         ),
       ],
     ),
@@ -56,27 +64,82 @@ class HomeScreen extends StatelessWidget {
               'Selecciona una operación para continuar.',
               style: TextStyle(fontSize: 16, color: _Colors.muted),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 14),
+            InkWell(
+              onTap: () async {
+                await _showConfigSheet(context);
+                setState(() {});
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: BackendConfig.isSimulation
+                      ? const Color(0xFFFFF7ED)
+                      : const Color(0xFFE6FFFA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: BackendConfig.isSimulation
+                        ? const Color(0xFFFFEDD5)
+                        : const Color(0xFFB2F5EA),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      BackendConfig.isSimulation
+                          ? Icons.offline_bolt_rounded
+                          : Icons.cloud_done_rounded,
+                      size: 18,
+                      color: BackendConfig.isSimulation
+                          ? const Color(0xFFC2410C)
+                          : _Colors.teal,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Modo: ${BackendConfig.modeLabel}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: BackendConfig.isSimulation
+                            ? const Color(0xFF9A3412)
+                            : _Colors.navy,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.edit_outlined, size: 14, color: _Colors.muted),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
             _ActionCard(
               title: 'Registro',
               description:
                   'Escanea el QR del equipo y escribe sus tarjetas NFC.',
               icon: Icons.group_outlined,
               primary: true,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => const RegistrationScreen(),
-                ),
-              ),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const RegistrationScreen(),
+                  ),
+                );
+                setState(() {});
+              },
             ),
             const SizedBox(height: 16),
             _ActionCard(
               title: 'Eventos',
               description: 'Valida asistentes en check-in, comida y desayuno.',
               icon: Icons.event_available_outlined,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const EventsScreen()),
-              ),
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const EventsScreen()),
+                );
+                setState(() {});
+              },
             ),
             const Spacer(),
             const Center(
@@ -91,14 +154,13 @@ class HomeScreen extends StatelessWidget {
     ),
   );
 
-  void _showConfigSheet(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => const _BackendConfigModal(),
-    );
-  }
+  Future<void> _showConfigSheet(BuildContext context) =>
+      showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (sheetContext) => const _BackendConfigModal(),
+      );
 }
 
 class RegistrationScreen extends StatefulWidget {
@@ -108,20 +170,114 @@ class RegistrationScreen extends StatefulWidget {
 }
 
 class _RegistrationScreenState extends State<RegistrationScreen> {
-  final List<_Participant> _participants = const [
-    _Participant('Ana Torres'),
-    _Participant('Luis Herrera'),
-    _Participant('María López'),
-    _Participant('Diego Ramírez'),
+  static const List<StaffParticipant> _simulatedParticipants = [
+    StaffParticipant(id: 'sim-1', name: 'Ana Torres'),
+    StaffParticipant(id: 'sim-2', name: 'Luis Herrera'),
+    StaffParticipant(id: 'sim-3', name: 'María López'),
+    StaffParticipant(id: 'sim-4', name: 'Diego Ramírez'),
   ];
-  final Set<int> _written = <int>{};
+
+  late final TextEditingController _qrController;
+  List<StaffParticipant> _participants = [];
+  final Set<String> _writtenParticipantIds = <String>{};
   bool _teamLoaded = false;
+  bool _isLoading = false;
+  String? _errorMessage;
+  String _teamName = 'Equipo Boreal';
+  String? _teamId;
+
+  @override
+  void initState() {
+    super.initState();
+    _qrController = TextEditingController(
+      text: BackendConfig.isSimulation ? 'simulado-boreal-qr' : '',
+    );
+    if (BackendConfig.isSimulation) {
+      _participants = _simulatedParticipants;
+    }
+  }
+
+  @override
+  void dispose() {
+    _qrController.dispose();
+    super.dispose();
+  }
+
+  void _loadSimulatedTeam() {
+    setState(() {
+      _teamName = 'Equipo Boreal';
+      _teamId = 'EQUIPO-BOREAL';
+      _participants = _simulatedParticipants;
+      _writtenParticipantIds.clear();
+      _teamLoaded = true;
+      _errorMessage = null;
+    });
+  }
+
+  Future<void> _fetchTeamByQr() async {
+    final token = _qrController.text.trim();
+    if (token.isEmpty) {
+      setState(() => _errorMessage = 'Por favor ingresa o escanea un token QR.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final service = StaffBackendService();
+    final res = await service.getTeamFromQr(token);
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      if (res.success) {
+        _teamName = res.teamName ?? 'Equipo';
+        _teamId = res.teamId;
+        _participants = res.participants;
+        _writtenParticipantIds.clear();
+        for (final p in res.participants) {
+          if (p.nfcActive) {
+            _writtenParticipantIds.add(p.id);
+          }
+        }
+        _teamLoaded = true;
+        _errorMessage = null;
+      } else {
+        _errorMessage = res.errorMessage ?? 'Error al consultar equipo (${res.statusCode})';
+      }
+    });
+  }
+
+  Future<void> _showConfigSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => const _BackendConfigModal(),
+    );
+    if (!mounted) return;
+    setState(() {
+      if (BackendConfig.isSimulation && _participants.isEmpty) {
+        _participants = _simulatedParticipants;
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('Registro de equipo'),
       backgroundColor: Colors.transparent,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
+          tooltip: 'Configuración de conexión',
+          onPressed: _showConfigSheet,
+        ),
+      ],
     ),
     body: SafeArea(
       child: AnimatedSwitcher(
@@ -131,58 +287,138 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     ),
   );
 
-  Widget _qrStep() => Padding(
-    key: const ValueKey('qr-step'),
-    padding: const EdgeInsets.all(24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Escanea el QR del equipo',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: _Colors.navy,
-          ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'El código identifica el equipo y permite confirmar a todos sus integrantes.',
-          style: TextStyle(fontSize: 16, color: _Colors.muted),
-        ),
-        const Spacer(),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(40),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-          ),
-          child: const Column(
-            children: [
-              Icon(
-                Icons.qr_code_scanner_rounded,
-                size: 112,
-                color: _Colors.navy,
+  Widget _qrStep() {
+    final isSimulation = BackendConfig.isSimulation;
+
+    return SingleChildScrollView(
+      key: const ValueKey('qr-step'),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isSimulation) ...[
+            InkWell(
+              onTap: _showConfigSheet,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                margin: const EdgeInsets.only(bottom: 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE6FFFA),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFB2F5EA)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_done_rounded, color: _Colors.teal, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${BackendConfig.modeLabel}: ${BackendConfig.functionsUrl}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _Colors.navy,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const Icon(Icons.edit_outlined, size: 14, color: _Colors.muted),
+                  ],
+                ),
               ),
-              SizedBox(height: 22),
-              Text(
-                'Cámara lista para leer QR',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-              ),
-            ],
+            ),
+          ],
+          Text(
+            isSimulation ? 'Escanea el QR del equipo' : 'Consulta de equipo por QR',
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w800,
+              color: _Colors.navy,
+            ),
           ),
-        ),
-        const Spacer(),
-        FilledButton.icon(
-          style: _primaryButtonStyle,
-          onPressed: () => setState(() => _teamLoaded = true),
-          icon: const Icon(Icons.qr_code_scanner),
-          label: const Text('Simular lectura de QR'),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 10),
+          Text(
+            isSimulation
+                ? 'El código identifica el equipo y permite confirmar a todos sus integrantes.'
+                : 'Ingresa el token QR del equipo registrado en Supabase para consultar sus integrantes.',
+            style: const TextStyle(fontSize: 16, color: _Colors.muted),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.qr_code_scanner_rounded,
+                  size: 100,
+                  color: _Colors.navy,
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  isSimulation
+                      ? 'Cámara lista para leer QR'
+                      : 'Listo para consultar equipo',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                if (!isSimulation) ...[
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _qrController,
+                    decoration: InputDecoration(
+                      labelText: 'Token QR del equipo',
+                      hintText: 'Ej. boreal-2026 o pega el token QR',
+                      prefixIcon: const Icon(Icons.qr_code_2_rounded),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.clear_rounded),
+                        onPressed: () => _qrController.clear(),
+                      ),
+                    ),
+                    onSubmitted: (_) => _fetchTeamByQr(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (_errorMessage != null) ...[
+            const SizedBox(height: 16),
+            _WarningBanner(message: _errorMessage!),
+          ],
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            style: _primaryButtonStyle,
+            onPressed: _isLoading
+                ? null
+                : (isSimulation ? _loadSimulatedTeam : _fetchTeamByQr),
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.qr_code_scanner),
+            label: Text(
+              isSimulation
+                  ? 'Simular lectura de QR'
+                  : 'Consultar equipo por QR',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _teamDetails() => ListView(
     key: const ValueKey('team-details'),
@@ -194,96 +430,211 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            CircleAvatar(
+            const CircleAvatar(
               radius: 26,
               backgroundColor: Color(0xFFE4F6F3),
               child: Icon(Icons.groups_rounded, color: _Colors.teal, size: 28),
             ),
-            SizedBox(width: 14),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Equipo Boreal',
-                    style: TextStyle(
+                    _teamName,
+                    style: const TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w800,
                       color: _Colors.navy,
                     ),
                   ),
-                  SizedBox(height: 3),
+                  const SizedBox(height: 3),
                   Text(
-                    '4 participantes confirmados',
-                    style: TextStyle(color: _Colors.muted),
+                    '${_participants.length} participantes confirmados',
+                    style: const TextStyle(color: _Colors.muted),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.verified_rounded, color: _Colors.success),
+            const Icon(Icons.verified_rounded, color: _Colors.success),
           ],
         ),
       ),
-      const SizedBox(height: 24),
-      const Text(
-        'Tarjetas de participantes',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: _Colors.navy,
-        ),
+      const SizedBox(height: 18),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text(
+            'Tarjetas de participantes',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: _Colors.navy,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => setState(() => _teamLoaded = false),
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+            label: const Text('Cambiar QR'),
+          ),
+        ],
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: 6),
       const Text(
         'Escribe una tarjeta individual por cada integrante.',
         style: TextStyle(color: _Colors.muted),
       ),
       const SizedBox(height: 12),
       ..._participants.indexed.map(
-        (entry) => _ParticipantRow(
-          participant: entry.$2,
-          written: _written.contains(entry.$1),
-          onWrite: () => _writeCard(entry.$1),
-        ),
+        (entry) {
+          final p = entry.$2;
+          final isWritten = _writtenParticipantIds.contains(p.id) ||
+              _writtenParticipantIds.contains(entry.$1.toString());
+          return _ParticipantRow(
+            name: p.fullName,
+            written: isWritten,
+            nfcToken: p.nfcToken,
+            onWrite: () => _writeCard(p, entry.$1),
+          );
+        },
       ),
       const SizedBox(height: 18),
-      if (_written.length == _participants.length)
+      if (_writtenParticipantIds.length >= _participants.length &&
+          _participants.isNotEmpty)
         const _SuccessBanner(
           message: 'Equipo registrado y tarjetas verificadas',
         ),
     ],
   );
 
-  Future<void> _writeCard(int index) => showModalBottomSheet<void>(
-    context: context,
-    showDragHandle: true,
-    builder: (sheetContext) => Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 34),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.nfc_rounded, size: 52, color: _Colors.teal),
-          const SizedBox(height: 12),
-          Text(
-            'Escribir tarjeta de ${_participants[index].name}',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+  Future<void> _writeCard(StaffParticipant participant, int index) async {
+    final isSimulation = BackendConfig.isSimulation;
+    bool isSubmitting = false;
+    String? localError;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (modalContext, setModalState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            8,
+            24,
+            MediaQuery.of(modalContext).viewInsets.bottom + 34,
           ),
-          const SizedBox(height: 8),
-          const Text('Acerca una tarjeta NFC vacía al teléfono.'),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(sheetContext);
-              setState(() => _written.add(index));
-            },
-            child: const Text('Confirmar escritura simulada'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.nfc_rounded, size: 52, color: _Colors.teal),
+              const SizedBox(height: 12),
+              Text(
+                'Escribir tarjeta de ${participant.fullName}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isSimulation
+                    ? 'Acerca una tarjeta NFC vacía al teléfono.'
+                    : 'Vincula la tarjeta NFC del participante en Supabase.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _Colors.muted),
+              ),
+              if (localError != null) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFFECACA)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: Colors.red, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          localError!,
+                          style: TextStyle(color: Colors.red.shade900, fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              if (isSimulation)
+                FilledButton(
+                  style: _primaryButtonStyle,
+                  onPressed: () {
+                    Navigator.pop(sheetContext);
+                    setState(() {
+                      _writtenParticipantIds.add(participant.id);
+                      _writtenParticipantIds.add(index.toString());
+                    });
+                  },
+                  child: const Text('Confirmar escritura simulada'),
+                )
+              else
+                FilledButton.icon(
+                  style: _primaryButtonStyle,
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          setModalState(() {
+                            isSubmitting = true;
+                            localError = null;
+                          });
+                          final service = StaffBackendService();
+                          final res = await service.issueNfc(participant.id);
+                          if (!modalContext.mounted) return;
+                          if (res.success) {
+                            BackendConfig.lastIssuedNfcToken = res.nfcToken ?? '';
+                            Navigator.pop(sheetContext);
+                            setState(() {
+                              _writtenParticipantIds.add(participant.id);
+                            });
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Tarjeta NFC vinculada: ${res.payload}',
+                                ),
+                                backgroundColor: _Colors.success,
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          } else {
+                            setModalState(() {
+                              isSubmitting = false;
+                              localError = res.errorMessage ?? 'Error al emitir tarjeta NFC';
+                            });
+                          }
+                        },
+                  icon: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.nfc_rounded),
+                  label: Text(
+                    isSubmitting ? 'Vinculando...' : 'Emitir tarjeta NFC en backend',
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class EventsScreen extends StatelessWidget {
@@ -370,9 +721,26 @@ class _EventScanScreenState extends State<EventScanScreen> {
   bool _isLoading = false;
   bool _isDuplicate = false;
   String? _duplicateTimestamp;
+  late final TextEditingController _tokenInputController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tokenInputController = TextEditingController(
+      text: BackendConfig.lastIssuedNfcToken.isNotEmpty
+          ? BackendConfig.lastIssuedNfcToken
+          : 'valid-nfc-token-123',
+    );
+  }
+
+  @override
+  void dispose() {
+    _tokenInputController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleScan() async {
-    if (BackendConfig.mode == BackendMode.simulation) {
+    if (BackendConfig.isSimulation) {
       setState(() {
         _participant = const _ScannedParticipant(
           'Ana Torres',
@@ -385,10 +753,21 @@ class _EventScanScreenState extends State<EventScanScreen> {
       return;
     }
 
+    final token = _tokenInputController.text.trim();
+    if (token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Por favor ingresa un token NFC para escanear.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
     final service = StaffBackendService();
     final res = await service.scanNfc(
-      nfcToken: 'valid-nfc-token-123',
+      nfcToken: token,
       accessType: widget.event.code,
     );
 
@@ -400,7 +779,7 @@ class _EventScanScreenState extends State<EventScanScreen> {
         _participant = _ScannedParticipant(
           res.participantName ?? 'Participante',
           res.teamName ?? 'Equipo',
-          res.participantId ?? 'NFC-VALID',
+          res.participantId ?? token,
         );
         _isDuplicate = false;
         _duplicateTimestamp = null;
@@ -428,6 +807,21 @@ class _EventScanScreenState extends State<EventScanScreen> {
     appBar: AppBar(
       title: Text(widget.event.name),
       backgroundColor: Colors.transparent,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
+          tooltip: 'Configuración de conexión',
+          onPressed: () async {
+            await showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (sheetContext) => const _BackendConfigModal(),
+            );
+            setState(() {});
+          },
+        ),
+      ],
     ),
     body: Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
@@ -447,7 +841,27 @@ class _EventScanScreenState extends State<EventScanScreen> {
             'Acerca la tarjeta del participante al teléfono.',
             style: TextStyle(color: _Colors.muted, fontSize: 16),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          if (!BackendConfig.isSimulation) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: TextField(
+                controller: _tokenInputController,
+                decoration: InputDecoration(
+                  labelText: 'Token NFC de la tarjeta',
+                  hintText: 'Ej. nfc-token o staffapp:nfc:...',
+                  prefixIcon: const Icon(Icons.nfc_rounded),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.clear_rounded),
+                    onPressed: () => _tokenInputController.clear(),
+                  ),
+                ),
+              ),
+            ),
+          ],
           Expanded(
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
@@ -469,7 +883,7 @@ class _EventScanScreenState extends State<EventScanScreen> {
                   )
                 : const Icon(Icons.nfc_rounded),
             label: Text(
-              BackendConfig.mode == BackendMode.simulation
+              BackendConfig.isSimulation
                   ? 'Simular lectura NFC'
                   : 'Escanear tarjeta NFC',
             ),
@@ -692,12 +1106,14 @@ class _ActionCard extends StatelessWidget {
 
 class _ParticipantRow extends StatelessWidget {
   const _ParticipantRow({
-    required this.participant,
+    required this.name,
     required this.written,
+    this.nfcToken,
     required this.onWrite,
   });
-  final _Participant participant;
+  final String name;
   final bool written;
+  final String? nfcToken;
   final VoidCallback onWrite;
   @override
   Widget build(BuildContext context) => Container(
@@ -719,7 +1135,7 @@ class _ParticipantRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                participant.name,
+                name,
                 style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   color: _Colors.navy,
@@ -729,6 +1145,7 @@ class _ParticipantRow extends StatelessWidget {
                 written ? 'Tarjeta NFC escrita' : 'Pendiente de escribir',
                 style: TextStyle(
                   color: written ? _Colors.success : _Colors.muted,
+                  fontSize: 13,
                 ),
               ),
             ],

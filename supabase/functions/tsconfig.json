@@ -6,10 +6,10 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "paths": {
-      "@supabase/functions-js/edge-runtime.d.ts": ["./_shared/deno.d.ts"],
-      "@supabase/supabase-js": ["./_shared/deno.d.ts"]
+      "@supabase/functions-js/edge-runtime.d.ts": ["./_shared/deno.d.ts"]
     },
     "lib": ["ESNext", "DOM"],
+    "skipLibCheck": true,
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
