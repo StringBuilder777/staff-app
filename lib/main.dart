@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'config/backend_config.dart';
+import 'services/staff_backend_service.dart';
 
 void main() => runApp(const StaffApp());
 
@@ -23,6 +25,17 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
+          tooltip: 'Configuración de conexión',
+          onPressed: () => _showConfigSheet(context),
+        ),
+      ],
+    ),
     body: SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
@@ -77,6 +90,15 @@ class HomeScreen extends StatelessWidget {
       ),
     ),
   );
+
+  void _showConfigSheet(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => const _BackendConfigModal(),
+    );
+  }
 }
 
 class RegistrationScreen extends StatefulWidget {
@@ -272,16 +294,19 @@ class EventsScreen extends StatelessWidget {
       'Check-in',
       'Registra la llegada del participante.',
       Icons.login_rounded,
+      code: 'checkin',
     ),
     _EventOption(
       'Desayuno',
       'Valida una entrada al desayuno.',
       Icons.breakfast_dining_outlined,
+      code: 'desayuno',
     ),
     _EventOption(
       'Comida',
       'Valida una entrada a la comida.',
       Icons.restaurant_outlined,
+      code: 'comida',
     ),
   ];
 
@@ -342,6 +367,61 @@ class EventScanScreen extends StatefulWidget {
 
 class _EventScanScreenState extends State<EventScanScreen> {
   _ScannedParticipant? _participant;
+  bool _isLoading = false;
+  bool _isDuplicate = false;
+  String? _duplicateTimestamp;
+
+  Future<void> _handleScan() async {
+    if (BackendConfig.mode == BackendMode.simulation) {
+      setState(() {
+        _participant = const _ScannedParticipant(
+          'Ana Torres',
+          'Equipo Boreal',
+          'PART-00128',
+        );
+        _isDuplicate = false;
+        _duplicateTimestamp = null;
+      });
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final service = StaffBackendService();
+    final res = await service.scanNfc(
+      nfcToken: 'valid-nfc-token-123',
+      accessType: widget.event.code,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      if (res.success) {
+        _participant = _ScannedParticipant(
+          res.participantName ?? 'Participante',
+          res.teamName ?? 'Equipo',
+          res.participantId ?? 'NFC-VALID',
+        );
+        _isDuplicate = false;
+        _duplicateTimestamp = null;
+      } else if (res.isDuplicate) {
+        _participant = _ScannedParticipant(
+          res.participantName ?? 'Participante',
+          res.teamName ?? 'Equipo',
+          'ACCESO-PREVIO',
+        );
+        _isDuplicate = true;
+        _duplicateTimestamp = res.previouslyRegisteredAt;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(res.errorMessage ?? 'Error al escanear tarjeta'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -377,15 +457,22 @@ class _EventScanScreenState extends State<EventScanScreen> {
           const SizedBox(height: 20),
           FilledButton.icon(
             style: _primaryButtonStyle,
-            onPressed: () => setState(
-              () => _participant = const _ScannedParticipant(
-                'Ana Torres',
-                'Equipo Boreal',
-                'PART-00128',
-              ),
+            onPressed: _isLoading ? null : _handleScan,
+            icon: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.nfc_rounded),
+            label: Text(
+              BackendConfig.mode == BackendMode.simulation
+                  ? 'Simular lectura NFC'
+                  : 'Escanear tarjeta NFC',
             ),
-            icon: const Icon(Icons.nfc_rounded),
-            label: const Text('Simular lectura NFC'),
           ),
         ],
       ),
@@ -429,7 +516,13 @@ class _EventScanScreenState extends State<EventScanScreen> {
     return ListView(
       key: const ValueKey('participant'),
       children: [
-        const _SuccessBanner(message: 'Acceso registrado correctamente'),
+        if (_isDuplicate)
+          _WarningBanner(
+            message:
+                'Acceso duplicado: registrado previamente a las ${_duplicateTimestamp ?? ""}',
+          )
+        else
+          const _SuccessBanner(message: 'Acceso registrado correctamente'),
         const SizedBox(height: 18),
         Container(
           padding: const EdgeInsets.all(24),
@@ -466,7 +559,11 @@ class _EventScanScreenState extends State<EventScanScreen> {
               const Divider(),
               _InfoRow(label: 'Evento', value: widget.event.name),
               _InfoRow(label: 'Credencial', value: participant.credential),
-              _InfoRow(label: 'Estado', value: 'Acceso válido', success: true),
+              _InfoRow(
+                label: 'Estado',
+                value: _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
+                success: !_isDuplicate,
+              ),
             ],
           ),
         ),
@@ -511,10 +608,16 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _EventOption {
-  const _EventOption(this.name, this.description, this.icon);
+  const _EventOption(
+    this.name,
+    this.description,
+    this.icon, {
+    this.code = 'checkin',
+  });
   final String name;
   final String description;
   final IconData icon;
+  final String code;
 }
 
 class _ScannedParticipant {
@@ -685,3 +788,164 @@ final _primaryButtonStyle = FilledButton.styleFrom(
   minimumSize: const Size.fromHeight(56),
   textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
 );
+
+class _WarningBanner extends StatelessWidget {
+  const _WarningBanner({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFEF3C7),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0xFFFDE68A)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF92400E),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _BackendConfigModal extends StatefulWidget {
+  const _BackendConfigModal();
+
+  @override
+  State<_BackendConfigModal> createState() => _BackendConfigModalState();
+}
+
+class _BackendConfigModalState extends State<_BackendConfigModal> {
+  late BackendMode _selectedMode;
+  late TextEditingController _tunnelController;
+  late TextEditingController _tokenController;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedMode = BackendConfig.mode;
+    _tunnelController = TextEditingController(text: BackendConfig.tunnelBaseUrl);
+    _tokenController = TextEditingController(text: BackendConfig.staffAuthToken);
+  }
+
+  @override
+  void dispose() {
+    _tunnelController.dispose();
+    _tokenController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        24,
+        8,
+        24,
+        MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Configuración de Conexión',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: _Colors.navy,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Selecciona el modo de comunicación con Supabase Edge Functions:',
+              style: TextStyle(color: _Colors.muted),
+            ),
+            const SizedBox(height: 14),
+            RadioListTile<BackendMode>(
+              title: const Text('Túnel HTTPS (localtunnel)'),
+              subtitle: const Text('Recomendado para conectar tu teléfono a la Mac'),
+              value: BackendMode.tunnel,
+              groupValue: _selectedMode,
+              onChanged: (val) => setState(() => _selectedMode = val!),
+            ),
+            if (_selectedMode == BackendMode.tunnel)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+                child: TextField(
+                  controller: _tunnelController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL de localtunnel',
+                    hintText: 'https://tu-tunel.loca.lt/functions/v1',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+            RadioListTile<BackendMode>(
+              title: const Text('Red Local Wi-Fi (IP de la Mac)'),
+              subtitle: const Text('http://10.0.40.78:54321/functions/v1'),
+              value: BackendMode.localNetwork,
+              groupValue: _selectedMode,
+              onChanged: (val) => setState(() => _selectedMode = val!),
+            ),
+            RadioListTile<BackendMode>(
+              title: const Text('Supabase Cloud (Remoto)'),
+              subtitle: const Text('uopfoekxkluotowilzaa.supabase.co'),
+              value: BackendMode.cloud,
+              groupValue: _selectedMode,
+              onChanged: (val) => setState(() => _selectedMode = val!),
+            ),
+            RadioListTile<BackendMode>(
+              title: const Text('Modo Simulación (Offline)'),
+              subtitle: const Text('Prueba de interfaz sin conexión al servidor'),
+              value: BackendMode.simulation,
+              groupValue: _selectedMode,
+              onChanged: (val) => setState(() => _selectedMode = val!),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _tokenController,
+              decoration: const InputDecoration(
+                labelText: 'JWT Token de Staff (Opcional si --no-verify-jwt)',
+                hintText: 'Pega el token Bearer para autenticación',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton(
+              style: _primaryButtonStyle,
+              onPressed: () {
+                setState(() {
+                  BackendConfig.mode = _selectedMode;
+                  BackendConfig.tunnelBaseUrl = _tunnelController.text.trim();
+                  BackendConfig.staffAuthToken = _tokenController.text.trim();
+                });
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Modo activo: ${_selectedMode.name}',
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Guardar configuración'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
