@@ -875,8 +875,8 @@ class _BackendConfigModalState extends State<_BackendConfigModal> {
             ),
             const SizedBox(height: 14),
             RadioListTile<BackendMode>(
-              title: const Text('Túnel HTTPS (localtunnel)'),
-              subtitle: const Text('Recomendado para conectar tu teléfono a la Mac'),
+              title: const Text('Túnel HTTPS (Cloudflare / localtunnel)'),
+              subtitle: const Text('Recomendado: Cloudflare Tunnel o localtunnel'),
               value: BackendMode.tunnel,
               groupValue: _selectedMode,
               onChanged: (val) => setState(() => _selectedMode = val!),
@@ -887,8 +887,8 @@ class _BackendConfigModalState extends State<_BackendConfigModal> {
                 child: TextField(
                   controller: _tunnelController,
                   decoration: const InputDecoration(
-                    labelText: 'URL de localtunnel',
-                    hintText: 'https://tu-tunel.loca.lt/functions/v1',
+                    labelText: 'URL del túnel',
+                    hintText: 'https://xyz.trycloudflare.com/functions/v1',
                     border: OutlineInputBorder(),
                   ),
                 ),

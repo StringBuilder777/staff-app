@@ -7,8 +7,8 @@ class BackendConfig {
   /// - `simulation`: Simulación local para UI sin backend.
   static BackendMode mode = BackendMode.simulation;
 
-  /// URL de túnel HTTPS (ej. generado con `npx localtunnel --port 54321`)
-  static String tunnelBaseUrl = 'https://tu-tunel.loca.lt/functions/v1';
+  /// URL de túnel HTTPS (ej. Cloudflare Tunnel `cloudflared tunnel --url http://localhost:54321` o `localtunnel`)
+  static String tunnelBaseUrl = 'https://tu-subdominio.trycloudflare.com/functions/v1';
 
   /// IP local de la Mac en la red Wi-Fi
   static String localNetworkBaseUrl = 'http://10.0.40.78:54321/functions/v1';
