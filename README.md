@@ -11,3 +11,12 @@ Aplicación Flutter para el personal de eventos.
 ```bash
 flutter run
 ```
+
+## Backend (Supabase Edge Functions)
+
+Consulta la documentación detallada y comandos en [supabase/README.md](file:///Users/stringbuilder/staffapp/supabase/README.md).
+
+- `staff-team-from-qr`: Búsqueda de equipos e integrantes vía QR sin exponer datos sensibles.
+- `staff-issue-nfc`: Emisión y activación segura de tarjetas NFC (`staffapp:nfc:<token>`).
+- `staff-scan-nfc`: Registro atómico de accesos con prevención de duplicados (409 Conflict).
+
