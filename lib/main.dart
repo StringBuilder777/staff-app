@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'config/backend_config.dart';
+import 'screens/qr_scanner_screen.dart';
 import 'services/staff_backend_service.dart';
 
 void main() => runApp(const StaffApp());
@@ -251,6 +252,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     });
   }
 
+  Future<void> _openCameraScanner() async {
+    final scannedCode = await Navigator.of(context).push<String>(
+      MaterialPageRoute<String>(
+        builder: (_) => const QrScannerScreen(),
+      ),
+    );
+
+    if (scannedCode != null && scannedCode.isNotEmpty) {
+      _qrController.text = scannedCode;
+      await _fetchTeamByQr();
+    }
+  }
+
   Future<void> _showConfigSheet() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -342,79 +356,123 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           Text(
             isSimulation
                 ? 'El código identifica el equipo y permite confirmar a todos sus integrantes.'
-                : 'Ingresa el token QR del equipo registrado en Supabase para consultar sus integrantes.',
+                : 'Apunta con la cámara al código QR o introduce el token registrado en Supabase.',
             style: const TextStyle(fontSize: 16, color: _Colors.muted),
           ),
           const SizedBox(height: 24),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.qr_code_scanner_rounded,
-                  size: 100,
-                  color: _Colors.navy,
-                ),
-                const SizedBox(height: 18),
-                Text(
-                  isSimulation
-                      ? 'Cámara lista para leer QR'
-                      : 'Listo para consultar equipo',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-                ),
-                if (!isSimulation) ...[
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: _qrController,
-                    decoration: InputDecoration(
-                      labelText: 'Token QR del equipo',
-                      hintText: 'Ej. boreal-2026 o pega el token QR',
-                      prefixIcon: const Icon(Icons.qr_code_2_rounded),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear_rounded),
-                        onPressed: () => _qrController.clear(),
-                      ),
-                    ),
-                    onSubmitted: (_) => _fetchTeamByQr(),
+          InkWell(
+            onTap: isSimulation ? _loadSimulatedTeam : _openCameraScanner,
+            borderRadius: BorderRadius.circular(28),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+                border: !isSimulation
+                    ? Border.all(color: const Color(0xFFB2F5EA), width: 1.5)
+                    : null,
+              ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.qr_code_scanner_rounded,
+                    size: 100,
+                    color: _Colors.navy,
                   ),
+                  const SizedBox(height: 18),
+                  Text(
+                    isSimulation
+                        ? 'Cámara lista para leer QR'
+                        : 'Toca para abrir cámara y escanear QR',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: _Colors.navy,
+                    ),
+                  ),
+                  if (!isSimulation) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Activa la cámara para lectura instantánea',
+                      style: TextStyle(color: _Colors.teal, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
+          if (!isSimulation) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              style: _primaryButtonStyle,
+              onPressed: _openCameraScanner,
+              icon: const Icon(Icons.camera_alt_rounded),
+              label: const Text('Abrir cámara para escanear QR'),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                const Expanded(child: Divider()),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'O ingresa el código manualmente',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                  ),
+                ),
+                const Expanded(child: Divider()),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _qrController,
+              decoration: InputDecoration(
+                labelText: 'Token QR del equipo',
+                hintText: 'Ej. 52cfc67e-... o pega el token QR',
+                prefixIcon: const Icon(Icons.qr_code_2_rounded),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.clear_rounded),
+                  onPressed: () => _qrController.clear(),
+                ),
+              ),
+              onSubmitted: (_) => _fetchTeamByQr(),
+            ),
+          ],
           if (_errorMessage != null) ...[
             const SizedBox(height: 16),
             _WarningBanner(message: _errorMessage!),
           ],
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            style: _primaryButtonStyle,
-            onPressed: _isLoading
-                ? null
-                : (isSimulation ? _loadSimulatedTeam : _fetchTeamByQr),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.qr_code_scanner),
-            label: Text(
-              isSimulation
-                  ? 'Simular lectura de QR'
-                  : 'Consultar equipo por QR',
+          const SizedBox(height: 20),
+          if (isSimulation)
+            FilledButton.icon(
+              style: _primaryButtonStyle,
+              onPressed: _loadSimulatedTeam,
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Simular lectura de QR'),
+            )
+          else
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(54),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              onPressed: _isLoading ? null : _fetchTeamByQr,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.search_rounded),
+              label: const Text('Consultar equipo por QR'),
             ),
-          ),
         ],
       ),
     );
