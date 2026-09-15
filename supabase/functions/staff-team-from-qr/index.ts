@@ -36,15 +36,45 @@ export async function handleStaffTeamFromQr(
 
     const qrToken = body.qrToken.trim();
 
-    // 3. Search team by equipos.qr_token
-    const { data: equipoRaw, error: equipoError } = await supabaseAdmin
-      .from('equipos')
-      .select('*')
-      .eq('qr_token', qrToken)
-      .maybeSingle();
+    // 3. Search team by equipos.qr_token or id, extracting UUID from URLs if applicable
+    const uuidMatch = qrToken.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    const candidateTokens: string[] = [];
+    if (uuidMatch) candidateTokens.push(uuidMatch[0].toLowerCase());
+    if (!candidateTokens.includes(qrToken)) candidateTokens.push(qrToken);
 
-    if (equipoError) {
-      return errorResponse('Error al consultar el equipo', 500, equipoError.message);
+    let equipoRaw: Record<string, unknown> | null = null;
+
+    for (const tokenToTry of candidateTokens) {
+      // Try by qr_token
+      const { data: byQr, error: errQr } = await supabaseAdmin
+        .from('equipos')
+        .select('*')
+        .eq('qr_token', tokenToTry)
+        .maybeSingle();
+
+      if (!errQr && byQr) {
+        equipoRaw = byQr as Record<string, unknown>;
+        break;
+      }
+
+      // If Postgres error is other than invalid UUID syntax (22P02), return 500
+      if (errQr && errQr.code !== '22P02') {
+        return errorResponse('Error al consultar el equipo', 500, errQr.message);
+      }
+
+      // Try by id if candidate is a UUID
+      if (uuidMatch) {
+        const { data: byId, error: errId } = await supabaseAdmin
+          .from('equipos')
+          .select('*')
+          .eq('id', tokenToTry)
+          .maybeSingle();
+
+        if (!errId && byId) {
+          equipoRaw = byId as Record<string, unknown>;
+          break;
+        }
+      }
     }
 
     if (!equipoRaw) {

@@ -86,6 +86,9 @@ const server = http.createServer(async (req, res) => {
     });
 
     console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${url.pathname}`);
+    if (bodyBuffer) {
+      console.log(`  📥 Payload recibido: ${bodyBuffer.toString('utf8')}`);
+    }
 
     let webRes: Response;
     if (url.pathname.includes('staff-team-from-qr')) {
@@ -140,6 +143,7 @@ const server = http.createServer(async (req, res) => {
     });
 
     const responseBytes = Buffer.from(await webRes.arrayBuffer());
+    console.log(`  📤 Respuesta [${webRes.status}]: ${responseBytes.toString('utf8')}`);
     res.end(responseBytes);
   } catch (err: unknown) {
     console.error('Error procesando solicitud:', err);
