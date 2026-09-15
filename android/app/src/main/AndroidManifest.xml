@@ -1,5 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.NFC" />
+    <!-- Declarar los permisos CAMERA y NFC hace que Google Play exija por
+         defecto el hardware correspondiente y filtre los dispositivos que no lo
+         tienen. La app avisa por sí sola cuando falta, así que se marcan como
+         no requeridos. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <application
         android:label="staff_app"
         android:name="${applicationName}"
