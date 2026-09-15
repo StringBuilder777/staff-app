@@ -9,7 +9,11 @@ export function sanitizeIntegrante(row: Record<string, unknown>): OperationalInt
   return {
     id: typeof row.id === 'string' ? row.id : String(row.id ?? ''),
     nombre: typeof row.nombre === 'string' ? row.nombre : '',
-    apellidos: typeof row.apellidos === 'string' ? row.apellidos : null,
+    apellidos: typeof row.apellidos === 'string'
+      ? row.apellidos
+      : typeof row.apellido === 'string'
+        ? row.apellido
+        : null,
     equipo_id: typeof row.equipo_id === 'string' ? row.equipo_id : null,
     nfc_token: typeof row.nfc_token === 'string' ? row.nfc_token : null,
     nfc_activa: typeof row.nfc_activa === 'boolean' ? row.nfc_activa : false,

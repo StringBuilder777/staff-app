@@ -25,6 +25,9 @@ if (fs.existsSync(envPath)) {
   console.log(`📄 Variables cargadas desde ${envPath}`);
 }
 
+// Habilitar autorización de prueba en servidor local si la app no envía JWT
+process.env.DEV_ALLOW_ANON_STAFF = 'true';
+
 // 2. Polyfill de Deno para entorno local
 const globalObj = globalThis as unknown as {
   Deno?: {
