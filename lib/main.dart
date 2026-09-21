@@ -916,7 +916,8 @@ class EventScanScreen extends StatefulWidget {
   State<EventScanScreen> createState() => _EventScanScreenState();
 }
 
-class _EventScanScreenState extends State<EventScanScreen> {
+class _EventScanScreenState extends State<EventScanScreen>
+    with WidgetsBindingObserver {
   _ScannedParticipant? _participant;
   bool _isLoading = false;
 
@@ -934,6 +935,7 @@ class _EventScanScreenState extends State<EventScanScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tokenInputController = TextEditingController(
       text: BackendConfig.lastIssuedNfcToken.isNotEmpty
           ? BackendConfig.lastIssuedNfcToken
@@ -949,11 +951,28 @@ class _EventScanScreenState extends State<EventScanScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Si se abandona la pantalla mientras espera una tarjeta hay que cerrar el
     // lector; si no, seguiría capturando tarjetas fuera de esta pantalla.
     unawaited(const NfcService().cancel());
     _tokenInputController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (BackendConfig.isSimulation) return;
+
+    if (state == AppLifecycleState.paused) {
+      // Android desarma el modo lector al pausar la actividad. Se cierra la
+      // sesión para que el bucle no quede esperando una tarjeta que ya nunca
+      // va a llegar por ese lector muerto.
+      unawaited(const NfcService().cancel());
+    } else if (state == AppLifecycleState.resumed) {
+      // Y se rearma al volver: sin esto la pantalla queda muda tras cualquier
+      // interrupción y no vuelve a leer nada.
+      _listenLoop();
+    }
   }
 
   Future<void> _cancelScan() => const NfcService().cancel();
