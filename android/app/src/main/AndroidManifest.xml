@@ -14,8 +14,15 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
-            android:taskAffinity=""
+            <!-- singleTask, no singleTop: una etiqueta NFC llega como intent
+                 nuevo, y singleTop solo reutiliza la instancia si esta ya está
+                 en lo alto de la misma tarea. Al no cumplirse, Android creaba
+                 otra y Flutter arrancaba de cero, devolviendo al operador a la
+                 pantalla de inicio y perdiendo la lectura en curso.
+                 Se retira también taskAffinity="", porque sin afinidad el
+                 sistema no localiza la tarea existente que singleTask necesita
+                 para reanudar en lugar de recrear. -->
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
