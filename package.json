@@ -9,7 +9,7 @@
     "tunnel": "npx localtunnel --port 54321",
     "test": "npx -p tsx tsx --tsconfig supabase/functions/tsconfig.json supabase/functions/tests/staff_edge_functions_test.ts",
     "check": "npx -p typescript tsc --project supabase/functions/tsconfig.json",
-    "deploy": "npx supabase functions deploy --project-ref uopfoekxkluotowilzaa"
+    "deploy": "npx supabase functions deploy staff-team-from-qr staff-issue-nfc staff-scan-nfc --project-ref uopfoekxkluotowilzaa"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0"
