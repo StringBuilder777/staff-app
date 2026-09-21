@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/backend_config.dart';
+import 'screens/event_selection_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/qr_scanner_screen.dart';
 import 'services/nfc_service.dart';
@@ -38,11 +39,58 @@ class StaffApp extends StatelessWidget {
   );
 }
 
+/// Raíz de la app una vez resuelto el acceso.
+const _eventSelection = EventSelectionScreen(
+  hackathon: HomeScreen(),
+  actions: [_TopBarActions()],
+);
+
+/// Acciones de la barra superior: configuración de conexión y cierre de sesión.
+///
+/// Viven aquí y no en la pantalla de selección porque dependen del estado de
+/// sesión de Supabase y del modo de backend.
+class _TopBarActions extends StatefulWidget {
+  const _TopBarActions();
+
+  @override
+  State<_TopBarActions> createState() => _TopBarActionsState();
+}
+
+class _TopBarActionsState extends State<_TopBarActions> {
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (BackendConfig.mode == BackendMode.cloud)
+        IconButton(
+          icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
+          tooltip: 'Cerrar sesión',
+          onPressed: () async {
+            // Los estáticos sobreviven al cierre de sesión: sin limpiarlos, el
+            // siguiente staff heredaría el token y la última credencial del
+            // anterior, y los accesos se le atribuirían a quien no fue.
+            BackendConfig.staffAuthToken = '';
+            BackendConfig.lastIssuedNfcToken = '';
+            await Supabase.instance.client.auth.signOut();
+          },
+        ),
+      IconButton(
+        icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
+        tooltip: 'Configuración de conexión',
+        onPressed: () async {
+          await _showConfigSheet(context);
+          if (mounted) setState(() {});
+        },
+      ),
+    ],
+  );
+}
+
 /// Decide entre login y app según haya sesión de Supabase.
 ///
-/// El modo simulación entra directo: existe para probar la interfaz sin backend
-/// y pedir credenciales ahí no aportaría nada. En los demás modos la sesión es
-/// obligatoria, porque el backend necesita saber qué staff registra cada acceso.
+/// Solo el modo cloud exige sesión, porque es el proyecto que firma el JWT.
+/// Simulación no habla con el backend, y túnel y red local apuntan a una
+/// instancia que valida con otro secreto, así que ahí manda el token manual.
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
@@ -61,18 +109,18 @@ class AuthGate extends StatelessWidget {
       // Solo cloud exige sesión: es el proyecto que firma el JWT. Simulación no
       // habla con el backend, y túnel y red local apuntan a una instancia que
       // valida con otro secreto, así que ahí manda el token manual.
-      if (mode != BackendMode.cloud) return const HomeScreen();
+      if (mode != BackendMode.cloud) return _eventSelection;
 
       final auth = _authOrNull();
       // Supabase sin inicializar (pruebas de widget): se sigue con el token
       // manual de BackendConfig, que es el comportamiento previo al login.
-      if (auth == null) return const HomeScreen();
+      if (auth == null) return _eventSelection;
 
       return StreamBuilder<AuthState>(
         stream: auth.onAuthStateChange,
         builder: (context, snapshot) {
           final session = snapshot.data?.session ?? auth.currentSession;
-          return session == null ? const LoginScreen() : const HomeScreen();
+          return session == null ? const LoginScreen() : _eventSelection;
         },
       );
     },
@@ -234,15 +282,20 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ),
   );
-
-  Future<void> _showConfigSheet(BuildContext context) =>
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (sheetContext) => const _BackendConfigModal(),
-      );
 }
+
+/// Hoja de configuración de conexión.
+///
+/// Es una función suelta y no un método porque la usan tanto la pantalla de
+/// inicio como las acciones de la barra superior, que viven en widgets
+/// distintos.
+Future<void> _showConfigSheet(BuildContext context) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => const _BackendConfigModal(),
+    );
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
