@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Configuración de endpoints y autenticación para el backend de Staff.
 class BackendConfig {
   /// Modo de conexión actual.
@@ -5,10 +7,18 @@ class BackendConfig {
   /// - `localNetwork`: Usa la IP de tu Mac en la red Wi-Fi (10.0.40.78).
   /// - `cloud`: Conecta directo a Supabase Edge Functions en la nube.
   /// - `simulation`: Simulación local para UI sin backend.
-  static BackendMode mode = BackendMode.simulation;
+  /// Observable para que la interfaz reaccione al cambio de modo. Sin esto, el
+  /// `AuthGate` se construye una sola vez y nunca reevalúa si hace falta login.
+  static final ValueNotifier<BackendMode> modeNotifier =
+      ValueNotifier<BackendMode>(BackendMode.simulation);
+
+  static BackendMode get mode => modeNotifier.value;
+
+  static set mode(BackendMode value) => modeNotifier.value = value;
 
   /// URL de túnel HTTPS (ej. Cloudflare Tunnel `cloudflared tunnel --url http://localhost:54321` o `localtunnel`)
-  static String tunnelBaseUrl = 'https://tu-subdominio.trycloudflare.com/functions/v1';
+  static String tunnelBaseUrl =
+      'https://tu-subdominio.trycloudflare.com/functions/v1';
 
   /// IP local de la Mac en la red Wi-Fi
   static String localNetworkBaseUrl = 'http://10.0.40.78:54321/functions/v1';
@@ -16,6 +26,17 @@ class BackendConfig {
   /// URL de producción directa de Supabase Cloud
   static const String cloudBaseUrl =
       'https://uopfoekxkluotowilzaa.supabase.co/functions/v1';
+
+  /// URL raíz del proyecto Supabase, sin `/functions/v1`. La usa el login.
+  static const String supabaseUrl = 'https://uopfoekxkluotowilzaa.supabase.co';
+
+  /// Clave `anon public` del proyecto, en Project Settings → API.
+  ///
+  /// Es pública por diseño: viaja dentro del APK igual que [cloudBaseUrl]. Lo
+  /// que protege los datos son las RLS y los controles de rol de las Edge
+  /// Functions, no el secreto de esta clave.
+  static const String supabaseAnonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvcGZvZWt4a2x1b3Rvd2lsemFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4OTM4ODgsImV4cCI6MjEwNDQ2OTg4OH0.UwlBEzKc1jhnZSamq-FqjjZakcpEAQyo3JD7gnD9848';
 
   /// Token JWT del usuario con rol staff/admin para autorizar peticiones.
   static String staffAuthToken = '';
@@ -55,9 +76,4 @@ class BackendConfig {
   }
 }
 
-enum BackendMode {
-  tunnel,
-  localNetwork,
-  cloud,
-  simulation,
-}
+enum BackendMode { tunnel, localNetwork, cloud, simulation }

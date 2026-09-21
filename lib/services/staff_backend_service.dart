@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../config/backend_config.dart';
 
 class StaffParticipant {
@@ -36,9 +38,8 @@ class StaffParticipant {
     );
   }
 
-  String get fullName => lastName != null && lastName!.isNotEmpty
-      ? '$name $lastName'
-      : name;
+  String get fullName =>
+      lastName != null && lastName!.isNotEmpty ? '$name $lastName' : name;
 }
 
 class TeamFromQrResult {
@@ -62,24 +63,22 @@ class TeamFromQrResult {
     required String teamId,
     required String teamName,
     required List<StaffParticipant> participants,
-  }) =>
-      TeamFromQrResult(
-        success: true,
-        statusCode: 200,
-        teamId: teamId,
-        teamName: teamName,
-        participants: participants,
-      );
+  }) => TeamFromQrResult(
+    success: true,
+    statusCode: 200,
+    teamId: teamId,
+    teamName: teamName,
+    participants: participants,
+  );
 
   factory TeamFromQrResult.error({
     required int statusCode,
     required String message,
-  }) =>
-      TeamFromQrResult(
-        success: false,
-        statusCode: statusCode,
-        errorMessage: message,
-      );
+  }) => TeamFromQrResult(
+    success: false,
+    statusCode: statusCode,
+    errorMessage: message,
+  );
 }
 
 class IssueNfcResult {
@@ -103,24 +102,22 @@ class IssueNfcResult {
     required String integranteId,
     required String nfcToken,
     required String payload,
-  }) =>
-      IssueNfcResult(
-        success: true,
-        statusCode: 200,
-        integranteId: integranteId,
-        nfcToken: nfcToken,
-        payload: payload,
-      );
+  }) => IssueNfcResult(
+    success: true,
+    statusCode: 200,
+    integranteId: integranteId,
+    nfcToken: nfcToken,
+    payload: payload,
+  );
 
   factory IssueNfcResult.error({
     required int statusCode,
     required String message,
-  }) =>
-      IssueNfcResult(
-        success: false,
-        statusCode: statusCode,
-        errorMessage: message,
-      );
+  }) => IssueNfcResult(
+    success: false,
+    statusCode: statusCode,
+    errorMessage: message,
+  );
 }
 
 class ScanNfcResult {
@@ -154,17 +151,16 @@ class ScanNfcResult {
     required String participantName,
     required String teamName,
     required String participantId,
-  }) =>
-      ScanNfcResult(
-        success: true,
-        isDuplicate: false,
-        statusCode: 200,
-        accessType: accessType,
-        registeredAt: registeredAt,
-        participantName: participantName,
-        teamName: teamName,
-        participantId: participantId,
-      );
+  }) => ScanNfcResult(
+    success: true,
+    isDuplicate: false,
+    statusCode: 200,
+    accessType: accessType,
+    registeredAt: registeredAt,
+    participantName: participantName,
+    teamName: teamName,
+    participantId: participantId,
+  );
 
   factory ScanNfcResult.duplicate({
     required String accessType,
@@ -172,42 +168,58 @@ class ScanNfcResult {
     required String errorMessage,
     required String participantName,
     required String teamName,
-  }) =>
-      ScanNfcResult(
-        success: false,
-        isDuplicate: true,
-        statusCode: 409,
-        accessType: accessType,
-        previouslyRegisteredAt: previouslyRegisteredAt,
-        errorMessage: errorMessage,
-        participantName: participantName,
-        teamName: teamName,
-      );
+  }) => ScanNfcResult(
+    success: false,
+    isDuplicate: true,
+    statusCode: 409,
+    accessType: accessType,
+    previouslyRegisteredAt: previouslyRegisteredAt,
+    errorMessage: errorMessage,
+    participantName: participantName,
+    teamName: teamName,
+  );
 
   factory ScanNfcResult.error({
     required int statusCode,
     required String errorMessage,
-  }) =>
-      ScanNfcResult(
-        success: false,
-        isDuplicate: false,
-        statusCode: statusCode,
-        errorMessage: errorMessage,
-      );
+  }) => ScanNfcResult(
+    success: false,
+    isDuplicate: false,
+    statusCode: statusCode,
+    errorMessage: errorMessage,
+  );
 }
 
 class StaffBackendService {
   final http.Client _client;
 
   StaffBackendService({http.Client? client})
-      : _client = client ?? http.Client();
+    : _client = client ?? http.Client();
+
+  /// Token de la sesión activa, que `supabase_flutter` renueva por su cuenta.
+  ///
+  /// Devuelve null si Supabase no está inicializado, cosa que ocurre en las
+  /// pruebas de widget, para que ahí se siga usando el token manual.
+  String? _sessionToken() {
+    try {
+      return Supabase.instance.client.auth.currentSession?.accessToken;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Map<String, String> _buildHeaders() {
-    final headers = <String, String>{
-      'Content-Type': 'application/json',
-    };
-    if (BackendConfig.staffAuthToken.isNotEmpty) {
-      headers['Authorization'] = 'Bearer ${BackendConfig.staffAuthToken}';
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    // La sesión la firma el proyecto cloud, así que solo sirve contra cloud.
+    // En túnel y red local el backend valida con otro secreto y ese JWT daría
+    // 401, por eso ahí manda el token pegado a mano.
+    final session = _sessionToken() ?? '';
+    final manual = BackendConfig.staffAuthToken;
+    final token = BackendConfig.mode == BackendMode.cloud
+        ? (session.isNotEmpty ? session : manual)
+        : (manual.isNotEmpty ? manual : session);
+    if (token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
     }
     return headers;
   }
@@ -294,10 +306,7 @@ class StaffBackendService {
       final response = await _client.post(
         url,
         headers: _buildHeaders(),
-        body: jsonEncode({
-          'nfcToken': nfcToken,
-          'accessType': accessType,
-        }),
+        body: jsonEncode({'nfcToken': nfcToken, 'accessType': accessType}),
       );
 
       final Map<String, dynamic> body =
