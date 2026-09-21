@@ -10,7 +10,7 @@ class BackendConfig {
   /// Observable para que la interfaz reaccione al cambio de modo. Sin esto, el
   /// `AuthGate` se construye una sola vez y nunca reevalúa si hace falta login.
   static final ValueNotifier<BackendMode> modeNotifier =
-      ValueNotifier<BackendMode>(BackendMode.simulation);
+      ValueNotifier<BackendMode>(BackendMode.cloud);
 
   static BackendMode get mode => modeNotifier.value;
 

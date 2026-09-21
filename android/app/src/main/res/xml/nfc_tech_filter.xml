@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tecnologías de tarjeta que esta app reclama ante el despachador de Android.
+
+  Sin esto, al acercar una tarjeta cuando la app no tiene el lector armado, el
+  sistema abre su propio visor ("Nueva etiqueta escaneada") y saca al operador
+  de la aplicación en plena fila.
+
+  Se incluyen las tarjetas sin estructura NDEF (NdefFormatable, MifareUltralight
+  y NfcA) porque una credencial en blanco todavía no expone Ndef.
+-->
+<resources>
+    <tech-list>
+        <tech>android.nfc.tech.Ndef</tech>
+    </tech-list>
+    <tech-list>
+        <tech>android.nfc.tech.NdefFormatable</tech>
+    </tech-list>
+    <tech-list>
+        <tech>android.nfc.tech.MifareUltralight</tech>
+    </tech-list>
+    <tech-list>
+        <tech>android.nfc.tech.NfcA</tech>
+    </tech-list>
+</resources>
