@@ -200,20 +200,30 @@ class StaffBackendService {
   ///
   /// Devuelve null si Supabase no está inicializado, cosa que ocurre en las
   /// pruebas de widget, para que ahí se siga usando el token manual.
-  String? _sessionToken() {
+  Future<String?> _sessionToken() async {
     try {
-      return Supabase.instance.client.auth.currentSession?.accessToken;
+      final auth = Supabase.instance.client.auth;
+      final session = auth.currentSession;
+      if (session == null) return null;
+      // Al restaurar la sesión tras un rato apagado, el access token puede
+      // venir caducado mientras el refresco corre por detrás. Sin esperarlo,
+      // el primer escaneo del día saldría con un JWT muerto y daría 401.
+      if (session.isExpired) {
+        final refreshed = await auth.refreshSession();
+        return refreshed.session?.accessToken;
+      }
+      return session.accessToken;
     } catch (_) {
       return null;
     }
   }
 
-  Map<String, String> _buildHeaders() {
+  Future<Map<String, String>> _buildHeaders() async {
     final headers = <String, String>{'Content-Type': 'application/json'};
     // La sesión la firma el proyecto cloud, así que solo sirve contra cloud.
     // En túnel y red local el backend valida con otro secreto y ese JWT daría
     // 401, por eso ahí manda el token pegado a mano.
-    final session = _sessionToken() ?? '';
+    final session = await _sessionToken() ?? '';
     final manual = BackendConfig.staffAuthToken;
     final token = BackendConfig.mode == BackendMode.cloud
         ? (session.isNotEmpty ? session : manual)
@@ -230,7 +240,7 @@ class StaffBackendService {
       final url = Uri.parse('${BackendConfig.functionsUrl}/staff-team-from-qr');
       final response = await _client.post(
         url,
-        headers: _buildHeaders(),
+        headers: await _buildHeaders(),
         body: jsonEncode({'qrToken': qrToken}),
       );
 
@@ -269,7 +279,7 @@ class StaffBackendService {
       final url = Uri.parse('${BackendConfig.functionsUrl}/staff-issue-nfc');
       final response = await _client.post(
         url,
-        headers: _buildHeaders(),
+        headers: await _buildHeaders(),
         body: jsonEncode({'integranteId': integranteId}),
       );
 
@@ -305,7 +315,7 @@ class StaffBackendService {
       final url = Uri.parse('${BackendConfig.functionsUrl}/staff-scan-nfc');
       final response = await _client.post(
         url,
-        headers: _buildHeaders(),
+        headers: await _buildHeaders(),
         body: jsonEncode({'nfcToken': nfcToken, 'accessType': accessType}),
       );
 
