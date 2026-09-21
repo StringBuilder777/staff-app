@@ -4,12 +4,16 @@ import 'package:staff_app/main.dart';
 
 void main() {
   testWidgets('shows operational entry points', (tester) async {
+    // El modo se fija de forma explícita: el valor por defecto de producción es
+    // cloud y estas pruebas ejercitan la interfaz de simulación.
+    BackendConfig.mode = BackendMode.simulation;
     await tester.pumpWidget(const StaffApp());
     expect(find.text('Registro'), findsOneWidget);
     expect(find.text('Eventos'), findsOneWidget);
   });
 
   testWidgets('shows participant data after an event NFC read', (tester) async {
+    BackendConfig.mode = BackendMode.simulation;
     await tester.pumpWidget(const StaffApp());
 
     await tester.tap(find.text('Eventos'));
