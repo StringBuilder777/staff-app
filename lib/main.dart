@@ -924,6 +924,9 @@ class _EventScanScreenState extends State<EventScanScreen> {
   /// durante la consulta posterior al backend. El botón usa esta distinción
   /// para ofrecer cancelar únicamente cuando cancelar tiene sentido.
   bool _isWaitingForCard = false;
+
+  /// Evita dos bucles de lectura solapados sobre el mismo lector.
+  bool _loopActive = false;
   bool _isDuplicate = false;
   String? _duplicateTimestamp;
   late final TextEditingController _tokenInputController;
@@ -936,6 +939,12 @@ class _EventScanScreenState extends State<EventScanScreen> {
           ? BackendConfig.lastIssuedNfcToken
           : 'valid-nfc-token-123',
     );
+    // El lector se arma al entrar, no al pulsar el botón. Si esta pantalla no
+    // tiene el modo lector exclusivo, Android despacha la tarjeta a cualquier
+    // app registrada para NFC y saca al operador de aquí.
+    if (!BackendConfig.isSimulation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _listenLoop());
+    }
   }
 
   @override
@@ -963,33 +972,56 @@ class _EventScanScreenState extends State<EventScanScreen> {
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _isWaitingForCard = true;
-    });
-    final nfcResult = await const NfcService().readTextPayload();
-    if (!mounted) return;
-    setState(() => _isWaitingForCard = false);
+    await _listenLoop();
+  }
 
-    if (nfcResult.cancelled) {
-      setState(() => _isLoading = false);
-      return;
+  /// Mantiene el lector armado mientras la pantalla siga visible, rearmándolo
+  /// después de cada lectura en vez de cerrarlo.
+  Future<void> _listenLoop() async {
+    if (_loopActive) return;
+    _loopActive = true;
+    try {
+      while (mounted) {
+        setState(() {
+          _isLoading = true;
+          _isWaitingForCard = true;
+        });
+
+        final nfcResult = await const NfcService().readTextPayload(
+          timeout: const Duration(minutes: 10),
+        );
+        if (!mounted) return;
+        setState(() => _isWaitingForCard = false);
+
+        if (nfcResult.cancelled) {
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        if (!nfcResult.success) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                nfcResult.errorMessage ?? 'No se pudo leer la tarjeta NFC.',
+              ),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+          // Se rearma: dejar el lector cerrado devolvería la tarjeta al
+          // despachador del sistema.
+          continue;
+        }
+
+        await _processToken(nfcResult.payload!);
+        if (!mounted) return;
+      }
+    } finally {
+      _loopActive = false;
     }
+  }
 
-    if (!nfcResult.success) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            nfcResult.errorMessage ?? 'No se pudo leer la tarjeta NFC.',
-          ),
-          backgroundColor: Colors.red.shade700,
-        ),
-      );
-      return;
-    }
-
-    final token = nfcResult.payload!;
+  Future<void> _processToken(String token) async {
     _tokenInputController.text = token;
     final service = StaffBackendService();
     final res = await service.scanNfc(
