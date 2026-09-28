@@ -348,26 +348,58 @@ class UnderlineField extends StatelessWidget {
   );
 }
 
-/// Aviso en línea. Ámbar para duplicado, acento para error.
+/// Tono de un aviso en línea.
+enum NoticeTone { ok, warn, danger }
+
+/// Aviso en línea.
+///
+/// Sin caja redondeada ni icono circular: una barra de acento a la izquierda y
+/// el texto. Bordes antes que sombras, y la etiqueta en versales carga el peso
+/// que antes llevaba el icono.
 class Notice extends StatelessWidget {
-  const Notice({super.key, required this.message, this.danger = false});
+  const Notice({
+    super.key,
+    required this.message,
+    this.tone = NoticeTone.warn,
+    this.label,
+  });
 
   final String message;
-  final bool danger;
+  final NoticeTone tone;
+
+  /// Encabezado opcional en versales, por ejemplo `CONFIRMADO`.
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
-    final color = danger ? Nothing.accent : Nothing.warn;
+    final (accent, background) = switch (tone) {
+      NoticeTone.ok => (Nothing.ok, const Color(0xFFEDF6F3)),
+      NoticeTone.warn => (Nothing.warn, Nothing.warnBg),
+      NoticeTone.danger => (Nothing.accent, const Color(0xFFFDF2F2)),
+    };
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
-        color: danger ? const Color(0xFFFDF2F2) : Nothing.warnBg,
-        border: Border(left: BorderSide(color: color, width: 3)),
+        color: background,
+        border: Border(left: BorderSide(color: accent, width: 3)),
       ),
-      child: Text(
-        message,
-        style: TextStyle(fontSize: 14, height: 1.4, color: color),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (label != null) ...[
+            Text(
+              label!.toUpperCase(),
+              style: Nothing.label.copyWith(color: accent),
+            ),
+            const SizedBox(height: 6),
+          ],
+          Text(
+            message,
+            style: TextStyle(fontSize: 14, height: 1.4, color: accent),
+          ),
+        ],
       ),
     );
   }
