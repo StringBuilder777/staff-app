@@ -467,7 +467,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     key: const ValueKey('team-details'),
     padding: const EdgeInsets.all(20),
     children: [
-      const SectionLabel('02', 'Equipo confirmado'),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Expanded(child: SectionLabel('02', 'Equipo confirmado')),
+          DotCircle(cells: 11, dot: 3, gap: 4, color: Nothing.ok, hollow: true),
+        ],
+      ),
       const SizedBox(height: 18),
       Text(_teamName, style: Nothing.display(36)),
       const SizedBox(height: 24),
@@ -526,8 +532,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       const SizedBox(height: 24),
       if (_writtenParticipantIds.length >= _participants.length &&
           _participants.isNotEmpty)
-        const _SuccessBanner(
-          message: 'Equipo registrado y credenciales activas',
+        const Notice(
+          tone: NoticeTone.ok,
+          label: 'Equipo registrado',
+          message: 'Todas las credenciales del equipo están activas.',
         ),
     ],
   );
@@ -713,18 +721,21 @@ class EventsScreen extends StatelessWidget {
       'Check-in',
       'Registra la llegada del participante.',
       Icons.login_rounded,
+      glyph: DotGlyphs.checkin,
       code: 'checkin',
     ),
     _EventOption(
       'Desayuno',
       'Valida una entrada al desayuno.',
       Icons.breakfast_dining_outlined,
+      glyph: DotGlyphs.breakfast,
       code: 'desayuno',
     ),
     _EventOption(
       'Comida',
       'Valida una entrada a la comida.',
       Icons.restaurant_outlined,
+      glyph: DotGlyphs.lunch,
       code: 'comida',
     ),
   ];
@@ -745,7 +756,15 @@ class EventsScreen extends StatelessWidget {
         ),
         child: ListView(
           children: [
-            const Reveal(child: SectionLabel('02', 'Accesos')),
+            Reveal(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Expanded(child: SectionLabel('02', 'Accesos')),
+                  DotCircle(cells: 11, dot: 3, gap: 4, color: Nothing.border),
+                ],
+              ),
+            ),
             const SizedBox(height: 20),
             Reveal(
               step: 1,
@@ -769,7 +788,7 @@ class EventsScreen extends StatelessWidget {
                     index: '0${entry.$1 + 1}',
                     title: entry.$2.name,
                     description: entry.$2.description,
-                    glyph: DotGlyphs.nfc,
+                    glyph: entry.$2.glyph,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => EventScanScreen(event: entry.$2),
@@ -1040,15 +1059,15 @@ class _EventScanScreenState extends State<EventScanScreen>
       // matriz va quieta: animar sin motivo gasta batería, distrae a quien
       // está leyendo y deja la pantalla sin asentarse nunca.
       if (_isWaitingForCard)
-        const AnimatedDotMatrix(
-          DotGlyphs.nfc,
+        AnimatedDotMatrix(
+          widget.event.glyph,
           motion: DotMotion.sweep,
           dot: 9,
           gap: 5,
           color: Nothing.ink,
         )
       else
-        const DotMatrix(DotGlyphs.nfc, dot: 9, gap: 5, color: Nothing.ink),
+        DotMatrix(widget.event.glyph, dot: 9, gap: 5, color: Nothing.ink),
       const SizedBox(height: 32),
       Text(
         _isWaitingForCard ? 'ESPERANDO\nTARJETA' : 'LISTO PARA\nLEER',
@@ -1112,7 +1131,10 @@ class _EventScanScreenState extends State<EventScanScreen>
         const Hairline(),
         if (_isDuplicate && _duplicateTimestamp != null) ...[
           const SizedBox(height: 20),
-          Notice(message: 'Registrado previamente a las $_duplicateTimestamp'),
+          Notice(
+            label: 'Registro previo',
+            message: 'Registrado previamente a las $_duplicateTimestamp',
+          ),
         ],
         const SizedBox(height: 24),
         SecondaryAction(
@@ -1130,11 +1152,16 @@ class _EventOption {
     this.name,
     this.description,
     this.icon, {
+    required this.glyph,
     this.code = 'checkin',
   });
   final String name;
   final String description;
   final IconData icon;
+
+  /// Glifo de puntos propio. Cada acceso se reconoce por su dibujo antes que
+  /// por su nombre: en la puerta se elige de un vistazo.
+  final List<String> glyph;
   final String code;
 }
 
@@ -1278,35 +1305,6 @@ class _ParticipantRow extends StatelessWidget {
       ),
       const Hairline(),
     ],
-  );
-}
-
-class _SuccessBanner extends StatelessWidget {
-  const _SuccessBanner({required this.message});
-  final String message;
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFDDF8EE),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.check_circle_rounded, color: Nothing.ok),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF047857),
-            ),
-          ),
-        ),
-      ],
-    ),
   );
 }
 

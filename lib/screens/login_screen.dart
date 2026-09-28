@@ -137,7 +137,11 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           if (_errorMessage != null) ...[
             const SizedBox(height: 28),
-            Notice(message: _errorMessage!, danger: true),
+            Notice(
+              message: _errorMessage!,
+              tone: NoticeTone.danger,
+              label: 'No se pudo entrar',
+            ),
           ],
           const SizedBox(height: 40),
           Reveal(

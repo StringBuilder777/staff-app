@@ -118,6 +118,81 @@ class DotGlyphs {
     '00000000000',
   ];
 
+  /// Check-in: flecha entrando por una puerta.
+  static const checkin = [
+    '00000000000',
+    '00000001110',
+    '00000001000',
+    '00100001000',
+    '00010001000',
+    '11111111000',
+    '00010001000',
+    '00100001000',
+    '00000001000',
+    '00000001110',
+    '00000000000',
+  ];
+
+  /// Desayuno: taza humeante.
+  static const breakfast = [
+    '00100010000',
+    '01000100000',
+    '00100010000',
+    '00000000000',
+    '11111111000',
+    '10000001000',
+    '10000001111',
+    '10000001001',
+    '10000001111',
+    '01111110000',
+    '00000000000',
+  ];
+
+  /// Comida: pata de pollo. La masa arriba, el hueso con su nudo abajo.
+  static const lunch = [
+    '00011110000',
+    '00111111000',
+    '01111111100',
+    '01111111100',
+    '01111111000',
+    '00111110000',
+    '00011100000',
+    '00011100000',
+    '00111110000',
+    '00111110000',
+    '00011100000',
+  ];
+
+  /// Microchip: identidad del hackathon.
+  static const chip = [
+    '00100010100',
+    '00100010100',
+    '01111111110',
+    '01000000010',
+    '11000000011',
+    '01000000010',
+    '11000000011',
+    '01000000010',
+    '01111111110',
+    '00100010100',
+    '00100010100',
+  ];
+
+  /// Terminal con cursor.
+  static const terminal = [
+    '11111111111',
+    '10000000001',
+    '10000000001',
+    '10110000001',
+    '10011000001',
+    '10110000001',
+    '10000000001',
+    '10001111001',
+    '10000000001',
+    '10000000001',
+    '11111111111',
+  ];
+
   /// Persona: cabecera de la ficha de participante.
   static const person = [
     '00001110000',
@@ -224,6 +299,67 @@ class DotText extends StatelessWidget {
             color: color,
           ),
   );
+}
+
+/// Esfera de puntos.
+///
+/// El círculo grande es el elemento gráfico de más peso del lenguaje Nothing.
+/// Aquí se construye con la misma rejilla que el resto, así que no desentona
+/// con los glifos ni necesita imágenes.
+class DotCircle extends StatelessWidget {
+  const DotCircle({
+    super.key,
+    this.cells = 13,
+    this.dot = 5,
+    this.gap = 3,
+    this.color = Nothing.ink,
+    this.motion,
+    this.hollow = false,
+  });
+
+  /// Lado de la rejilla, en puntos. Impar da un centro nítido.
+  final int cells;
+  final double dot;
+  final double gap;
+  final Color color;
+  final DotMotion? motion;
+
+  /// Solo el contorno, para usarla como marco en lugar de como masa.
+  final bool hollow;
+
+  List<String> get _pattern {
+    final radius = cells / 2;
+    final inner = radius - 1.6;
+
+    return List.generate(cells, (y) {
+      final row = StringBuffer();
+      for (var x = 0; x < cells; x++) {
+        final dx = x - radius + 0.5;
+        final dy = y - radius + 0.5;
+        final distance = dx * dx + dy * dy;
+        final inside = distance <= radius * radius;
+        final lit = hollow ? inside && distance > inner * inner : inside;
+        row.write(lit ? '1' : '0');
+      }
+      return row.toString();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pattern = _pattern;
+    return ExcludeSemantics(
+      child: motion == null
+          ? DotMatrix(pattern, dot: dot, gap: gap, color: color)
+          : AnimatedDotMatrix(
+              pattern,
+              motion: motion!,
+              dot: dot,
+              gap: gap,
+              color: color,
+            ),
+    );
+  }
 }
 
 /// Campo decorativo de puntos apagados.
