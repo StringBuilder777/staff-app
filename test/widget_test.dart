@@ -6,7 +6,8 @@ import 'package:staff_app/main.dart';
 /// de SITEC vive detrás de la pantalla de selección de evento.
 Future<void> abrirHackathon(WidgetTester tester) async {
   await tester.pumpWidget(const StaffApp());
-  await tester.tap(find.text('Hackathon'));
+  // El sistema de diseño pinta los títulos en mayúsculas.
+  await tester.tap(find.text('HACKATHON'));
   await tester.pumpAndSettle();
 }
 
