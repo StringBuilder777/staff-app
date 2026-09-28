@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/dot_matrix.dart';
+import '../theme/motion.dart';
 import '../theme/nothing.dart';
 
 /// Primera pantalla tras el acceso: elegir sobre qué evento se va a trabajar.
@@ -37,47 +38,61 @@ class EventSelectionScreen extends StatelessWidget {
           Nothing.gutter,
         ),
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(child: SectionLabel('01', 'Eventos')),
-              // Textura de rejilla en la cabecera: da densidad sin competir
-              // con el texto, que es de lo que se quejaba la pantalla vacía.
-              const DotField(columns: 7, rows: 4, dot: 2.5, gap: 7),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Text('SELECCIONA\nEL EVENTO', style: Nothing.display(44)),
-          const SizedBox(height: 16),
-          const Text(
-            'Los accesos que registres se guardan en el evento que elijas.',
-            style: Nothing.body,
-          ),
-          const SizedBox(height: 36),
-          const Hairline(),
-          _EventRow(
-            index: '01',
-            title: 'Hackathon',
-            subtitle: 'Registro de equipos, credenciales y accesos',
-            glyph: DotGlyphs.qr,
-            onTap: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute<void>(builder: (_) => hackathon)),
-          ),
-          const Hairline(),
-          _EventRow(
-            index: '02',
-            title: 'SITEC',
-            subtitle: 'Pendiente de configurar',
-            glyph: DotGlyphs.cross,
-            enabled: false,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const _SitecScreen()),
+          Reveal(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Expanded(child: SectionLabel('01', 'Eventos')),
+                // Textura de rejilla en la cabecera: da densidad sin competir
+                // con el texto, que es de lo que se quejaba la pantalla vacía.
+                DotField(columns: 7, rows: 4, dot: 2.5, gap: 7),
+              ],
             ),
           ),
-          const Hairline(),
+          const SizedBox(height: 24),
+          Reveal(
+            step: 1,
+            child: Text('SELECCIONA\nEL EVENTO', style: Nothing.display(44)),
+          ),
+          const SizedBox(height: 16),
+          const Reveal(
+            step: 2,
+            child: Text(
+              'Los accesos que registres se guardan en el evento que elijas.',
+              style: Nothing.body,
+            ),
+          ),
           const SizedBox(height: 36),
-          const _Footer(),
+          const RevealLine(step: 3),
+          Reveal(
+            step: 3,
+            child: _EventRow(
+              index: '01',
+              title: 'Hackathon',
+              subtitle: 'Registro de equipos, credenciales y accesos',
+              glyph: DotGlyphs.qr,
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => hackathon)),
+            ),
+          ),
+          const RevealLine(step: 4),
+          Reveal(
+            step: 4,
+            child: _EventRow(
+              index: '02',
+              title: 'SITEC',
+              subtitle: 'Pendiente de configurar',
+              glyph: DotGlyphs.cross,
+              enabled: false,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const _SitecScreen()),
+              ),
+            ),
+          ),
+          const RevealLine(step: 4),
+          const SizedBox(height: 36),
+          const Reveal(step: 4, child: _Footer()),
         ],
       ),
     ),
