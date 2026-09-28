@@ -65,10 +65,11 @@ void main() {
 
       // The simulation button is gone
       expect(find.text('Simular lectura de QR'), findsNothing);
-      // The camera scan button and backend QR lookup button are shown instead
-      expect(find.text('Abrir cámara para escanear QR'), findsOneWidget);
-      expect(find.text('Consultar equipo por QR'), findsOneWidget);
-      expect(find.text('Token QR del equipo'), findsOneWidget);
+      // Solo queda el escaneo por cámara: la entrada manual del token se
+      // retiró para dejar un único camino.
+      expect(find.text('Abrir cámara y escanear QR'), findsOneWidget);
+      expect(find.text('Consultar equipo por QR'), findsNothing);
+      expect(find.text('Token QR del equipo'), findsNothing);
 
       // Reset back to simulation
       BackendConfig.mode = BackendMode.simulation;
