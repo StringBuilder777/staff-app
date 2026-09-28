@@ -7,6 +7,9 @@ import 'screens/event_selection_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/qr_scanner_screen.dart';
 import 'services/connection_status.dart';
+import 'theme/dot_matrix.dart';
+import 'theme/motion.dart';
+import 'theme/nothing.dart';
 import 'services/nfc_service.dart';
 import 'services/staff_backend_service.dart';
 
@@ -1003,203 +1006,165 @@ class _EventScanScreenState extends State<EventScanScreen>
       backgroundColor: Colors.transparent,
       actions: [_TopBarActions()],
     ),
-    body: Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Lectura NFC · ${widget.event.name}',
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: _Colors.navy,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Acerca la tarjeta del participante al teléfono para validarla.',
-            style: TextStyle(color: _Colors.muted, fontSize: 16),
-          ),
-          const SizedBox(height: 20),
-          if (!BackendConfig.isSimulation) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: TextField(
-                controller: _tokenInputController,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Última credencial leída',
-                  hintText: 'Se completa al leer la tarjeta',
-                  prefixIcon: const Icon(Icons.nfc_rounded),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Reveal(child: SectionLabel('01', 'Lectura NFC')),
+            const SizedBox(height: 18),
+            Reveal(
+              step: 1,
+              child: Text(
+                widget.event.name.toUpperCase(),
+                style: Nothing.display(42),
               ),
             ),
-          ],
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: _participant == null ? _readerState() : _participantCard(),
+            const SizedBox(height: 12),
+            const Reveal(
+              step: 2,
+              child: Text(
+                'Acerca la tarjeta del participante al teléfono.',
+                style: Nothing.body,
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            style: _primaryButtonStyle,
-            onPressed: _isWaitingForCard
-                ? _cancelScan
-                : (_isLoading ? null : _handleScan),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.nfc_rounded),
-            label: Text(
-              _isWaitingForCard
+            if (!BackendConfig.isSimulation) ...[
+              const SizedBox(height: 26),
+              Reveal(
+                step: 2,
+                child: UnderlineField(
+                  label: 'Última credencial',
+                  controller: _tokenInputController,
+                  readOnly: true,
+                ),
+              ),
+            ],
+            const SizedBox(height: 28),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: Motion.base,
+                child: _participant == null
+                    ? _readerState()
+                    : _participantCard(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            PrimaryAction(
+              label: _isWaitingForCard
                   ? 'Cancelar lectura'
                   : BackendConfig.isSimulation
                   ? 'Simular lectura NFC'
                   : 'Leer tarjeta NFC',
+              busy: _isLoading && !_isWaitingForCard,
+              icon: Icons.nfc_rounded,
+              onPressed: _isWaitingForCard ? _cancelScan : _handleScan,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );
 
-  Widget _readerState() => Container(
+  /// Espera de tarjeta. El barrido en bucle comunica «esto sigue vivo» sin
+  /// ocupar texto ni robar atención, que es justo para lo que existe.
+  Widget _readerState() => Column(
     key: const ValueKey('reader'),
-    width: double.infinity,
-    padding: const EdgeInsets.all(28),
-    decoration: BoxDecoration(
-      color: const Color(0xFFE9FAF7),
-      borderRadius: BorderRadius.circular(28),
-      border: Border.all(color: const Color(0xFFB8EAE1)),
-    ),
-    child: const Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.nfc_rounded, size: 88, color: _Colors.teal),
-        SizedBox(height: 22),
-        Text(
-          'Listo para leer tarjeta',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: _Colors.navy,
-          ),
-        ),
-        SizedBox(height: 8),
-        Text(
-          'Mantén una sola tarjeta cerca del teléfono.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: _Colors.muted),
-        ),
-      ],
-    ),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      // El bucle solo corre mientras se espera tarjeta de verdad. En reposo la
+      // matriz va quieta: animar sin motivo gasta batería, distrae a quien
+      // está leyendo y deja la pantalla sin asentarse nunca.
+      if (_isWaitingForCard)
+        const AnimatedDotMatrix(
+          DotGlyphs.nfc,
+          motion: DotMotion.sweep,
+          dot: 9,
+          gap: 5,
+          color: Nothing.ink,
+        )
+      else
+        const DotMatrix(DotGlyphs.nfc, dot: 9, gap: 5, color: Nothing.ink),
+      const SizedBox(height: 32),
+      Text(
+        _isWaitingForCard ? 'ESPERANDO\nTARJETA' : 'LISTO PARA\nLEER',
+        style: Nothing.display(34),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        'Mantén una sola tarjeta cerca del teléfono.',
+        style: Nothing.body,
+      ),
+    ],
   );
 
+  /// Resultado de la lectura.
+  ///
+  /// El código de respuesta es el protagonista: en la puerta se decide por él,
+  /// y en cifra grande se lee de un vistazo desde lejos.
   Widget _participantCard() {
     final participant = _participant!;
+    final code = _isDuplicate ? '409' : 'OK';
+    final caption = _isDuplicate ? 'Duplicado' : 'Acceso válido';
+    final tone = _isDuplicate ? Nothing.accent : Nothing.ok;
+
     return ListView(
       key: const ValueKey('participant'),
+      padding: EdgeInsets.zero,
       children: [
-        if (_isDuplicate)
-          _WarningBanner(
-            message:
-                'Acceso duplicado: registrado previamente a las ${_duplicateTimestamp ?? ""}',
-          )
-        else
-          const _SuccessBanner(message: 'Acceso registrado correctamente'),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            children: [
-              const CircleAvatar(
-                radius: 42,
-                backgroundColor: Color(0xFFE4F6F3),
-                child: Icon(
-                  Icons.person_rounded,
-                  size: 46,
-                  color: _Colors.teal,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                participant.name,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: _Colors.navy,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                participant.team,
-                style: const TextStyle(fontSize: 16, color: _Colors.muted),
-              ),
-              const SizedBox(height: 24),
-              const Divider(),
-              _InfoRow(label: 'Evento', value: widget.event.name),
-              _InfoRow(label: 'Credencial', value: participant.credential),
-              _InfoRow(
-                label: 'Estado',
-                value: _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
-                success: !_isDuplicate,
-              ),
-            ],
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            DotText(code, dot: 7, gap: 4, color: tone),
+            const SizedBox(width: 18),
+            Expanded(child: Text(caption.toUpperCase(), style: Nothing.label)),
+            AnimatedDotMatrix(
+              _isDuplicate ? DotGlyphs.cross : DotGlyphs.check,
+              motion: DotMotion.reveal,
+              dot: 3,
+              gap: 1.5,
+              color: tone,
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
+        const SizedBox(height: 24),
+        // El nombre no va en mayúsculas: es el dato que más rápido hay que
+        // leer y las versales lo empeoran.
+        Text(participant.name, style: Nothing.display(32)),
+        const SizedBox(height: 6),
+        Text(participant.team, style: Nothing.body),
+        const SizedBox(height: 24),
+        const Hairline(),
+        MetaRow('Evento', widget.event.name),
+        const Hairline(),
+        MetaRow('Credencial', participant.credential),
+        const Hairline(),
+        MetaRow(
+          'Estado',
+          // El literal 'Acceso válido' lo comprueba widget_test.dart.
+          _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
+          valueColor: tone,
+        ),
+        const Hairline(),
+        if (_isDuplicate && _duplicateTimestamp != null) ...[
+          const SizedBox(height: 20),
+          Notice(message: 'Registrado previamente a las $_duplicateTimestamp'),
+        ],
+        const SizedBox(height: 24),
+        SecondaryAction(
+          label: 'Leer otra tarjeta',
+          icon: Icons.nfc_rounded,
           onPressed: () => setState(() => _participant = null),
-          icon: const Icon(Icons.nfc_rounded),
-          label: const Text('Leer otra tarjeta'),
         ),
       ],
     );
   }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    this.success = false,
-  });
-  final String label;
-  final String value;
-  final bool success;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(label, style: const TextStyle(color: _Colors.muted)),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: success ? _Colors.success : _Colors.navy,
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 class _EventOption {
