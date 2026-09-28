@@ -112,48 +112,98 @@ export async function authenticateAndAuthorize(
   };
 }
 
+export interface StaffResolution {
+  staffId: string | null;
+  /** Función operativa del catálogo roles_staff, por ejemplo "Logística". */
+  rol?: string;
+  /** Motivo concreto del fallo, para no devolver un mensaje genérico al cliente. */
+  error?: string;
+}
+
+export interface ScanPermission {
+  allowed: boolean;
+  /** Presente solo si la comprobación falló; distinto de no tener permiso. */
+  error?: string;
+}
+
+/**
+ * Indica si una función operativa puede validar accesos leyendo NFC.
+ *
+ * El permiso vive en roles_staff.puede_escanear, así que cambiar la política es
+ * un UPDATE en la base y no exige volver a desplegar esta función.
+ */
+export async function canScanAccess(
+  supabaseAdmin: SupabaseClient,
+  rol: string
+): Promise<ScanPermission> {
+  if (!rol) return { allowed: false };
+
+  const { data, error } = await supabaseAdmin
+    .from('roles_staff')
+    .select('puede_escanear')
+    .eq('nombre', rol)
+    .maybeSingle();
+
+  // Un fallo de consulta no es una denegación de permiso. Si se despliega esta
+  // función antes de aplicar la migración, responder 403 mandaría a todo el
+  // staff a revisar permisos cuando el problema es de esquema.
+  if (error) {
+    return {
+      allowed: false,
+      error: `No se pudo comprobar el permiso de la función de staff: ${error.message}`,
+    };
+  }
+
+  return { allowed: data?.puede_escanear === true };
+}
+
 /**
  * Resolves staff.id corresponding to a perfil_id.
  * 1. Checks public.staff where perfil_id = perfilId.
  * 2. Checks public.staff where id = perfilId (for backwards compatibility).
- * 3. Safely auto-registers staff record if missing.
+ * 3. Si no hay fila, devuelve error accionable. No da de alta solo: la función
+ *    operativa no se puede deducir desde perfiles.rol.
  */
 export async function resolveStaffId(
   supabaseAdmin: SupabaseClient,
   perfilId: string
-): Promise<string | null> {
+): Promise<StaffResolution> {
   // 1. Lookup by perfil_id
   const { data: staffByPerfil, error: err1 } = await supabaseAdmin
     .from('staff')
-    .select('id')
+    .select('id, rol')
     .eq('perfil_id', perfilId)
     .maybeSingle();
 
   if (!err1 && staffByPerfil?.id) {
-    return String(staffByPerfil.id);
+    return {
+      staffId: String(staffByPerfil.id),
+      rol: staffByPerfil.rol ? String(staffByPerfil.rol) : undefined,
+    };
   }
 
   // 2. Lookup by id
   const { data: staffById, error: err2 } = await supabaseAdmin
     .from('staff')
-    .select('id')
+    .select('id, rol')
     .eq('id', perfilId)
     .maybeSingle();
 
   if (!err2 && staffById?.id) {
-    return String(staffById.id);
+    return {
+      staffId: String(staffById.id),
+      rol: staffById.rol ? String(staffById.rol) : undefined,
+    };
   }
 
-  // 3. Auto-insert staff entry for authorized staff/admin
-  const { data: insertedStaff, error: insertErr } = await supabaseAdmin
-    .from('staff')
-    .insert({ perfil_id: perfilId })
-    .select('id')
-    .maybeSingle();
-
-  if (!insertErr && insertedStaff?.id) {
-    return String(insertedStaff.id);
-  }
-
-  return null;
+  // 3. Sin fila en staff no se puede continuar, y no se da de alta sola.
+  // staff.rol es una función operativa del catálogo roles_staff (Coordinación,
+  // Logística, Registro...), no el nivel de permiso de perfiles.rol, así que no
+  // hay forma de deducirla desde el perfil. Inventarla decidiría además quién
+  // puede escanear, porque el permiso de escaneo depende de esa función.
+  return {
+    staffId: null,
+    error:
+      'Tu usuario no está dado de alta en el equipo de staff. Pide a coordinación que te registre y te asigne una función.',
+  };
 }

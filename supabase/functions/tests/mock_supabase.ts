@@ -10,6 +10,13 @@ export interface MockDatabaseState {
   users: Array<{ id: string; email?: string }>;
   perfiles: Array<{ id: string; rol: string; [key: string]: unknown }>;
   staff: Array<{ id: string; perfil_id?: string; [key: string]: unknown }>;
+  /** Catálogo de funciones operativas. staff.rol apunta aquí por `nombre`. */
+  roles_staff: Array<{
+    id: string;
+    nombre: string;
+    puede_escanear: boolean;
+    [key: string]: unknown;
+  }>;
   equipos: Array<{ id: string; nombre: string; qr_token?: string; [key: string]: unknown }>;
   integrantes: Array<{
     id: string;
@@ -49,8 +56,16 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
       { id: 'user-part-1', rol: 'participante', nombre: 'Pedro Participante' },
     ],
     staff: [
-      { id: 'staff-uuid-1', perfil_id: 'user-staff-1' },
-      { id: 'staff-uuid-2', perfil_id: 'user-admin-1' },
+      // `rol` es la función operativa del catálogo roles_staff, no el nivel de
+      // permiso de perfiles.rol.
+      { id: 'staff-uuid-1', perfil_id: 'user-staff-1', rol: 'Registro' },
+      { id: 'staff-uuid-2', perfil_id: 'user-admin-1', rol: 'Coordinación' },
+    ],
+    roles_staff: [
+      { id: 'rol-uuid-1', nombre: 'Coordinación', puede_escanear: true },
+      { id: 'rol-uuid-2', nombre: 'Registro', puede_escanear: true },
+      // Mentor no opera los filtros de acceso: sirve para probar el rechazo.
+      { id: 'rol-uuid-3', nombre: 'Mentor', puede_escanear: false },
     ],
     equipos: [
       { id: 'equipo-uuid-1', nombre: 'Equipo Boreal', qr_token: 'valid-qr-token-123' },
@@ -110,6 +125,8 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
         return db.perfiles;
       case 'staff':
         return db.staff;
+      case 'roles_staff':
+        return db.roles_staff;
       case 'equipos':
         return db.equipos;
       case 'integrantes':

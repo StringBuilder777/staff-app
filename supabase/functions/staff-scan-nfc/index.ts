@@ -3,7 +3,11 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { handleCors } from '../_shared/cors.ts';
 import { jsonResponse, errorResponse, parseJsonBody } from '../_shared/utils.ts';
 import { getSupabaseAdminClient } from '../_shared/supabase.ts';
-import { authenticateAndAuthorize, resolveStaffId } from '../_shared/auth.ts';
+import {
+  authenticateAndAuthorize,
+  canScanAccess,
+  resolveStaffId,
+} from '../_shared/auth.ts';
 import { sanitizeEquipo, sanitizeIntegrante } from '../_shared/sanitizers.ts';
 import {
   isValidAccessType,
@@ -55,10 +59,28 @@ export async function handleStaffScanNfc(
     }
 
     // 2. Resolve staff.id by staff.perfil_id
-    const staffId = await resolveStaffId(supabaseAdmin, authResult.perfil.id);
+    const {
+      staffId,
+      rol: staffRol,
+      error: staffError,
+    } = await resolveStaffId(supabaseAdmin, authResult.perfil.id);
     if (!staffId) {
       return errorResponse(
-        'No se pudo resolver el identificador de staff correspondiente a tu usuario',
+        staffError ??
+          'No se pudo resolver el identificador de staff correspondiente a tu usuario',
+        403
+      );
+    }
+
+    // No toda función operativa valida accesos: Mentor, Jurado y Comunicación
+    // no operan los filtros. El permiso se consulta en el catálogo.
+    const permiso = await canScanAccess(supabaseAdmin, staffRol ?? '');
+    if (permiso.error) {
+      return errorResponse(permiso.error, 500);
+    }
+    if (!permiso.allowed) {
+      return errorResponse(
+        `Tu función de staff (${staffRol ?? 'sin asignar'}) no tiene permiso para validar accesos`,
         403
       );
     }

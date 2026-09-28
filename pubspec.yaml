@@ -36,6 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
   mobile_scanner: ^7.4.2
+  # NDEF read/write for the Android NFC hardware.
+  nfc_manager: ^4.2.1
+  supabase_flutter: ^2.17.2
 
 dev_dependencies:
   flutter_test:

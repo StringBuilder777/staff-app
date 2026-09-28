@@ -91,7 +91,10 @@ class _QrScannerScreenState extends State<QrScannerScreen>
             onPressed: () => _controller.toggleTorch(),
           ),
           IconButton(
-            icon: const Icon(Icons.flip_camera_ios_rounded, color: Colors.white),
+            icon: const Icon(
+              Icons.flip_camera_ios_rounded,
+              color: Colors.white,
+            ),
             tooltip: 'Cambiar cámara',
             onPressed: () => _controller.switchCamera(),
           ),
@@ -116,7 +119,8 @@ class _QrScannerScreenState extends State<QrScannerScreen>
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        error.errorCode == MobileScannerErrorCode.permissionDenied
+                        error.errorCode ==
+                                MobileScannerErrorCode.permissionDenied
                             ? 'Permiso de cámara necesario'
                             : 'Cámara: ${error.errorCode.message}',
                         textAlign: TextAlign.center,

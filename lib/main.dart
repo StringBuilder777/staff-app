@@ -1,9 +1,27 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/backend_config.dart';
+import 'screens/event_selection_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/qr_scanner_screen.dart';
+import 'services/nfc_service.dart';
 import 'services/staff_backend_service.dart';
 
-void main() => runApp(const StaffApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(
+    url: BackendConfig.supabaseUrl,
+    // `anonKey` está marcado como obsoleto en favor de `publishableKey`, pero
+    // la clave del proyecto sigue siendo del formato antiguo (JWT `eyJ...`).
+    // Se mantiene hasta migrar la clave en Supabase, porque equivocarse aquí
+    // deja la app sin poder conectarse.
+    // ignore: deprecated_member_use
+    anonKey: BackendConfig.supabaseAnonKey,
+  );
+  runApp(const StaffApp());
+}
 
 class StaffApp extends StatelessWidget {
   const StaffApp({super.key});
@@ -17,7 +35,95 @@ class StaffApp extends StatelessWidget {
       scaffoldBackgroundColor: const Color(0xFFF4F7FA),
       useMaterial3: true,
     ),
-    home: const HomeScreen(),
+    home: const AuthGate(),
+  );
+}
+
+/// Raíz de la app una vez resuelto el acceso.
+const _eventSelection = EventSelectionScreen(
+  hackathon: HomeScreen(),
+  actions: [_TopBarActions()],
+);
+
+/// Acciones de la barra superior: configuración de conexión y cierre de sesión.
+///
+/// Viven aquí y no en la pantalla de selección porque dependen del estado de
+/// sesión de Supabase y del modo de backend.
+class _TopBarActions extends StatefulWidget {
+  const _TopBarActions();
+
+  @override
+  State<_TopBarActions> createState() => _TopBarActionsState();
+}
+
+class _TopBarActionsState extends State<_TopBarActions> {
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (BackendConfig.mode == BackendMode.cloud)
+        IconButton(
+          icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
+          tooltip: 'Cerrar sesión',
+          onPressed: () async {
+            // Los estáticos sobreviven al cierre de sesión: sin limpiarlos, el
+            // siguiente staff heredaría el token y la última credencial del
+            // anterior, y los accesos se le atribuirían a quien no fue.
+            BackendConfig.staffAuthToken = '';
+            BackendConfig.lastIssuedNfcToken = '';
+            await Supabase.instance.client.auth.signOut();
+          },
+        ),
+      IconButton(
+        icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
+        tooltip: 'Configuración de conexión',
+        onPressed: () async {
+          await _showConfigSheet(context);
+          if (mounted) setState(() {});
+        },
+      ),
+    ],
+  );
+}
+
+/// Decide entre login y app según haya sesión de Supabase.
+///
+/// Solo el modo cloud exige sesión, porque es el proyecto que firma el JWT.
+/// Simulación no habla con el backend, y túnel y red local apuntan a una
+/// instancia que valida con otro secreto, así que ahí manda el token manual.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  GoTrueClient? _authOrNull() {
+    try {
+      return Supabase.instance.client.auth;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<BackendMode>(
+    valueListenable: BackendConfig.modeNotifier,
+    builder: (context, mode, _) {
+      // Solo cloud exige sesión: es el proyecto que firma el JWT. Simulación no
+      // habla con el backend, y túnel y red local apuntan a una instancia que
+      // valida con otro secreto, así que ahí manda el token manual.
+      if (mode != BackendMode.cloud) return _eventSelection;
+
+      final auth = _authOrNull();
+      // Supabase sin inicializar (pruebas de widget): se sigue con el token
+      // manual de BackendConfig, que es el comportamiento previo al login.
+      if (auth == null) return _eventSelection;
+
+      return StreamBuilder<AuthState>(
+        stream: auth.onAuthStateChange,
+        builder: (context, snapshot) {
+          final session = snapshot.data?.session ?? auth.currentSession;
+          return session == null ? const LoginScreen() : _eventSelection;
+        },
+      );
+    },
   );
 }
 
@@ -35,6 +141,21 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       elevation: 0,
       actions: [
+        // El AuthGate devuelve al login en cuanto la sesión se cierra, así que
+        // aquí no hace falta navegar.
+        if (BackendConfig.mode == BackendMode.cloud)
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
+            tooltip: 'Cerrar sesión',
+            onPressed: () async {
+              // Los estáticos sobreviven al cierre de sesión: sin limpiarlos,
+              // el siguiente staff heredaría el token y la última credencial
+              // del anterior, y los accesos se le atribuirían a quien no fue.
+              BackendConfig.staffAuthToken = '';
+              BackendConfig.lastIssuedNfcToken = '';
+              await Supabase.instance.client.auth.signOut();
+            },
+          ),
         IconButton(
           icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
           tooltip: 'Configuración de conexión',
@@ -73,7 +194,10 @@ class _HomeScreenState extends State<HomeScreen> {
               },
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: BackendConfig.isSimulation
                       ? const Color(0xFFFFF7ED)
@@ -109,7 +233,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    const Icon(Icons.edit_outlined, size: 14, color: _Colors.muted),
+                    const Icon(
+                      Icons.edit_outlined,
+                      size: 14,
+                      color: _Colors.muted,
+                    ),
                   ],
                 ),
               ),
@@ -154,15 +282,20 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ),
   );
-
-  Future<void> _showConfigSheet(BuildContext context) =>
-      showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        showDragHandle: true,
-        builder: (sheetContext) => const _BackendConfigModal(),
-      );
 }
+
+/// Hoja de configuración de conexión.
+///
+/// Es una función suelta y no un método porque la usan tanto la pantalla de
+/// inicio como las acciones de la barra superior, que viven en widgets
+/// distintos.
+Future<void> _showConfigSheet(BuildContext context) =>
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => const _BackendConfigModal(),
+    );
 
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
@@ -218,7 +351,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   Future<void> _fetchTeamByQr() async {
     final token = _qrController.text.trim();
     if (token.isEmpty) {
-      setState(() => _errorMessage = 'Por favor ingresa o escanea un token QR.');
+      setState(
+        () => _errorMessage = 'Por favor ingresa o escanea un token QR.',
+      );
       return;
     }
 
@@ -247,16 +382,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         _teamLoaded = true;
         _errorMessage = null;
       } else {
-        _errorMessage = res.errorMessage ?? 'Error al consultar equipo (${res.statusCode})';
+        _errorMessage =
+            res.errorMessage ?? 'Error al consultar equipo (${res.statusCode})';
       }
     });
   }
 
   Future<void> _openCameraScanner() async {
     final scannedCode = await Navigator.of(context).push<String>(
-      MaterialPageRoute<String>(
-        builder: (_) => const QrScannerScreen(),
-      ),
+      MaterialPageRoute<String>(builder: (_) => const QrScannerScreen()),
     );
 
     if (scannedCode != null && scannedCode.isNotEmpty) {
@@ -315,7 +449,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               onTap: _showConfigSheet,
               borderRadius: BorderRadius.circular(12),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 margin: const EdgeInsets.only(bottom: 18),
                 decoration: BoxDecoration(
                   color: const Color(0xFFE6FFFA),
@@ -324,7 +461,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.cloud_done_rounded, color: _Colors.teal, size: 20),
+                    const Icon(
+                      Icons.cloud_done_rounded,
+                      color: _Colors.teal,
+                      size: 20,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -338,14 +479,20 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Icon(Icons.edit_outlined, size: 14, color: _Colors.muted),
+                    const Icon(
+                      Icons.edit_outlined,
+                      size: 14,
+                      color: _Colors.muted,
+                    ),
                   ],
                 ),
               ),
             ),
           ],
           Text(
-            isSimulation ? 'Escanea el QR del equipo' : 'Consulta de equipo por QR',
+            isSimulation
+                ? 'Escanea el QR del equipo'
+                : 'Consulta de equipo por QR',
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
@@ -396,7 +543,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     const SizedBox(height: 6),
                     const Text(
                       'Activa la cámara para lectura instantánea',
-                      style: TextStyle(color: _Colors.teal, fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        color: _Colors.teal,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ],
@@ -545,24 +696,23 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         style: TextStyle(color: _Colors.muted),
       ),
       const SizedBox(height: 12),
-      ..._participants.indexed.map(
-        (entry) {
-          final p = entry.$2;
-          final isWritten = _writtenParticipantIds.contains(p.id) ||
-              _writtenParticipantIds.contains(entry.$1.toString());
-          return _ParticipantRow(
-            name: p.fullName,
-            written: isWritten,
-            nfcToken: p.nfcToken,
-            onWrite: () => _writeCard(p, entry.$1),
-          );
-        },
-      ),
+      ..._participants.indexed.map((entry) {
+        final p = entry.$2;
+        final isWritten =
+            _writtenParticipantIds.contains(p.id) ||
+            _writtenParticipantIds.contains(entry.$1.toString());
+        return _ParticipantRow(
+          name: p.fullName,
+          written: isWritten,
+          nfcToken: p.nfcToken,
+          onWrite: () => _writeCard(p, entry.$1),
+        );
+      }),
       const SizedBox(height: 18),
       if (_writtenParticipantIds.length >= _participants.length &&
           _participants.isNotEmpty)
         const _SuccessBanner(
-          message: 'Equipo registrado y tarjetas verificadas',
+          message: 'Equipo registrado y credenciales activas',
         ),
     ],
   );
@@ -592,13 +742,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               Text(
                 'Escribir tarjeta de ${participant.fullName}',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 8),
               Text(
                 isSimulation
                     ? 'Acerca una tarjeta NFC vacía al teléfono.'
-                    : 'Vincula la tarjeta NFC del participante en Supabase.',
+                    : 'Se emitirá la credencial y después deberás acercar una tarjeta NFC escribible.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: _Colors.muted),
               ),
@@ -613,12 +766,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline_rounded, color: Colors.red, size: 20),
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        color: Colors.red,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           localError!,
-                          style: TextStyle(color: Colors.red.shade900, fontSize: 13),
+                          style: TextStyle(
+                            color: Colors.red.shade900,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ],
@@ -652,24 +812,52 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           final res = await service.issueNfc(participant.id);
                           if (!modalContext.mounted) return;
                           if (res.success) {
-                            BackendConfig.lastIssuedNfcToken = res.nfcToken ?? '';
-                            Navigator.pop(sheetContext);
-                            setState(() {
-                              _writtenParticipantIds.add(participant.id);
-                            });
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Tarjeta NFC vinculada: ${res.payload}',
+                            final payload = res.payload?.trim() ?? '';
+                            if (payload.isEmpty) {
+                              setModalState(() {
+                                isSubmitting = false;
+                                localError =
+                                    'El servidor no devolvió un payload NFC válido.';
+                              });
+                              return;
+                            }
+
+                            final writeResult = await const NfcService()
+                                .writeTextPayload(payload);
+                            if (!modalContext.mounted) return;
+                            if (!mounted) return;
+                            if (writeResult.success) {
+                              BackendConfig.lastIssuedNfcToken =
+                                  res.nfcToken ?? '';
+                              Navigator.pop(sheetContext);
+                              setState(() {
+                                _writtenParticipantIds.add(participant.id);
+                              });
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Tarjeta NFC escrita y vinculada correctamente.',
+                                  ),
+                                  backgroundColor: _Colors.success,
+                                  duration: Duration(seconds: 4),
                                 ),
-                                backgroundColor: _Colors.success,
-                                duration: const Duration(seconds: 4),
-                              ),
-                            );
+                              );
+                            } else if (writeResult.cancelled) {
+                              setModalState(() => isSubmitting = false);
+                            } else {
+                              setModalState(() {
+                                isSubmitting = false;
+                                localError =
+                                    writeResult.errorMessage ??
+                                    'No se pudo escribir la tarjeta NFC.';
+                              });
+                            }
                           } else {
                             setModalState(() {
                               isSubmitting = false;
-                              localError = res.errorMessage ?? 'Error al emitir tarjeta NFC';
+                              localError =
+                                  res.errorMessage ??
+                                  'Error al emitir tarjeta NFC';
                             });
                           }
                         },
@@ -684,7 +872,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         )
                       : const Icon(Icons.nfc_rounded),
                   label: Text(
-                    isSubmitting ? 'Vinculando...' : 'Emitir tarjeta NFC en backend',
+                    isSubmitting
+                        ? 'Vinculando...'
+                        : 'Emitir tarjeta NFC en backend',
                   ),
                 ),
             ],
@@ -692,6 +882,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
       ),
     );
+
+    // El sheet se puede descartar mientras el lector espera la tarjeta. Sin
+    // este cierre la sesión quedaría abierta y la siguiente tarjeta que se
+    // acercara se escribiría con la credencial de este participante.
+    await const NfcService().cancel();
   }
 }
 
@@ -774,9 +969,18 @@ class EventScanScreen extends StatefulWidget {
   State<EventScanScreen> createState() => _EventScanScreenState();
 }
 
-class _EventScanScreenState extends State<EventScanScreen> {
+class _EventScanScreenState extends State<EventScanScreen>
+    with WidgetsBindingObserver {
   _ScannedParticipant? _participant;
   bool _isLoading = false;
+
+  /// Cierto solo mientras el lector NFC está abierto esperando una tarjeta, no
+  /// durante la consulta posterior al backend. El botón usa esta distinción
+  /// para ofrecer cancelar únicamente cuando cancelar tiene sentido.
+  bool _isWaitingForCard = false;
+
+  /// Evita dos bucles de lectura solapados sobre el mismo lector.
+  bool _loopActive = false;
   bool _isDuplicate = false;
   String? _duplicateTimestamp;
   late final TextEditingController _tokenInputController;
@@ -784,18 +988,47 @@ class _EventScanScreenState extends State<EventScanScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tokenInputController = TextEditingController(
       text: BackendConfig.lastIssuedNfcToken.isNotEmpty
           ? BackendConfig.lastIssuedNfcToken
           : 'valid-nfc-token-123',
     );
+    // El lector se arma al entrar, no al pulsar el botón. Si esta pantalla no
+    // tiene el modo lector exclusivo, Android despacha la tarjeta a cualquier
+    // app registrada para NFC y saca al operador de aquí.
+    if (!BackendConfig.isSimulation) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _listenLoop());
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Si se abandona la pantalla mientras espera una tarjeta hay que cerrar el
+    // lector; si no, seguiría capturando tarjetas fuera de esta pantalla.
+    unawaited(const NfcService().cancel());
     _tokenInputController.dispose();
     super.dispose();
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (BackendConfig.isSimulation) return;
+
+    if (state == AppLifecycleState.paused) {
+      // Android desarma el modo lector al pausar la actividad. Se cierra la
+      // sesión para que el bucle no quede esperando una tarjeta que ya nunca
+      // va a llegar por ese lector muerto.
+      unawaited(const NfcService().cancel());
+    } else if (state == AppLifecycleState.resumed) {
+      // Y se rearma al volver: sin esto la pantalla queda muda tras cualquier
+      // interrupción y no vuelve a leer nada.
+      _listenLoop();
+    }
+  }
+
+  Future<void> _cancelScan() => const NfcService().cancel();
 
   Future<void> _handleScan() async {
     if (BackendConfig.isSimulation) {
@@ -811,18 +1044,57 @@ class _EventScanScreenState extends State<EventScanScreen> {
       return;
     }
 
-    final token = _tokenInputController.text.trim();
-    if (token.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor ingresa un token NFC para escanear.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
+    await _listenLoop();
+  }
 
-    setState(() => _isLoading = true);
+  /// Mantiene el lector armado mientras la pantalla siga visible, rearmándolo
+  /// después de cada lectura en vez de cerrarlo.
+  Future<void> _listenLoop() async {
+    if (_loopActive) return;
+    _loopActive = true;
+    try {
+      while (mounted) {
+        setState(() {
+          _isLoading = true;
+          _isWaitingForCard = true;
+        });
+
+        final nfcResult = await const NfcService().readTextPayload(
+          timeout: const Duration(minutes: 10),
+        );
+        if (!mounted) return;
+        setState(() => _isWaitingForCard = false);
+
+        if (nfcResult.cancelled) {
+          setState(() => _isLoading = false);
+          return;
+        }
+
+        if (!nfcResult.success) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                nfcResult.errorMessage ?? 'No se pudo leer la tarjeta NFC.',
+              ),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+          // Se rearma: dejar el lector cerrado devolvería la tarjeta al
+          // despachador del sistema.
+          continue;
+        }
+
+        await _processToken(nfcResult.payload!);
+        if (!mounted) return;
+      }
+    } finally {
+      _loopActive = false;
+    }
+  }
+
+  Future<void> _processToken(String token) async {
+    _tokenInputController.text = token;
     final service = StaffBackendService();
     final res = await service.scanNfc(
       nfcToken: token,
@@ -896,7 +1168,7 @@ class _EventScanScreenState extends State<EventScanScreen> {
           ),
           const SizedBox(height: 10),
           const Text(
-            'Acerca la tarjeta del participante al teléfono.',
+            'Acerca la tarjeta del participante al teléfono para validarla.',
             style: TextStyle(color: _Colors.muted, fontSize: 16),
           ),
           const SizedBox(height: 20),
@@ -905,16 +1177,13 @@ class _EventScanScreenState extends State<EventScanScreen> {
               padding: const EdgeInsets.only(bottom: 14),
               child: TextField(
                 controller: _tokenInputController,
+                readOnly: true,
                 decoration: InputDecoration(
-                  labelText: 'Token NFC de la tarjeta',
-                  hintText: 'Ej. nfc-token o staffapp:nfc:...',
+                  labelText: 'Última credencial leída',
+                  hintText: 'Se completa al leer la tarjeta',
                   prefixIcon: const Icon(Icons.nfc_rounded),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
-                  ),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear_rounded),
-                    onPressed: () => _tokenInputController.clear(),
                   ),
                 ),
               ),
@@ -929,7 +1198,9 @@ class _EventScanScreenState extends State<EventScanScreen> {
           const SizedBox(height: 20),
           FilledButton.icon(
             style: _primaryButtonStyle,
-            onPressed: _isLoading ? null : _handleScan,
+            onPressed: _isWaitingForCard
+                ? _cancelScan
+                : (_isLoading ? null : _handleScan),
             icon: _isLoading
                 ? const SizedBox(
                     width: 20,
@@ -941,9 +1212,11 @@ class _EventScanScreenState extends State<EventScanScreen> {
                   )
                 : const Icon(Icons.nfc_rounded),
             label: Text(
-              BackendConfig.isSimulation
+              _isWaitingForCard
+                  ? 'Cancelar lectura'
+                  : BackendConfig.isSimulation
                   ? 'Simular lectura NFC'
-                  : 'Escanear tarjeta NFC',
+                  : 'Leer tarjeta NFC',
             ),
           ),
         ],
@@ -1200,7 +1473,10 @@ class _ParticipantRow extends StatelessWidget {
                 ),
               ),
               Text(
-                written ? 'Tarjeta NFC escrita' : 'Pendiente de escribir',
+                // `written` sale de `nfc_activa` del backend: significa que la
+                // credencial está emitida, no que se haya escrito una tarjeta
+                // física en esta sesión.
+                written ? 'Credencial activa' : 'Pendiente de escribir',
                 style: TextStyle(
                   color: written ? _Colors.success : _Colors.muted,
                   fontSize: 13,
@@ -1209,10 +1485,16 @@ class _ParticipantRow extends StatelessWidget {
             ],
           ),
         ),
-        if (written)
-          const Icon(Icons.check_circle_rounded, color: _Colors.success)
-        else
-          TextButton(onPressed: onWrite, child: const Text('Escribir NFC')),
+        if (written) ...[
+          const Icon(Icons.check_circle_rounded, color: _Colors.success),
+          const SizedBox(width: 4),
+        ],
+        // El botón nunca se oculta: si alguien pierde la tarjeta hay que poder
+        // reescribirla sin tener que volver a escanear el QR del equipo.
+        TextButton(
+          onPressed: onWrite,
+          child: Text(written ? 'Reescribir' : 'Escribir NFC'),
+        ),
       ],
     ),
   );
@@ -1310,8 +1592,12 @@ class _BackendConfigModalState extends State<_BackendConfigModal> {
   void initState() {
     super.initState();
     _selectedMode = BackendConfig.mode;
-    _tunnelController = TextEditingController(text: BackendConfig.tunnelBaseUrl);
-    _tokenController = TextEditingController(text: BackendConfig.staffAuthToken);
+    _tunnelController = TextEditingController(
+      text: BackendConfig.tunnelBaseUrl,
+    );
+    _tokenController = TextEditingController(
+      text: BackendConfig.staffAuthToken,
+    );
   }
 
   @override
@@ -1351,7 +1637,9 @@ class _BackendConfigModalState extends State<_BackendConfigModal> {
             const SizedBox(height: 14),
             RadioListTile<BackendMode>(
               title: const Text('Túnel HTTPS (Cloudflare / localtunnel)'),
-              subtitle: const Text('Recomendado: Cloudflare Tunnel o localtunnel'),
+              subtitle: const Text(
+                'Recomendado: Cloudflare Tunnel o localtunnel',
+              ),
               value: BackendMode.tunnel,
               groupValue: _selectedMode,
               onChanged: (val) => setState(() => _selectedMode = val!),
@@ -1384,7 +1672,9 @@ class _BackendConfigModalState extends State<_BackendConfigModal> {
             ),
             RadioListTile<BackendMode>(
               title: const Text('Modo Simulación (Offline)'),
-              subtitle: const Text('Prueba de interfaz sin conexión al servidor'),
+              subtitle: const Text(
+                'Prueba de interfaz sin conexión al servidor',
+              ),
               value: BackendMode.simulation,
               groupValue: _selectedMode,
               onChanged: (val) => setState(() => _selectedMode = val!),
@@ -1409,11 +1699,7 @@ class _BackendConfigModalState extends State<_BackendConfigModal> {
                 });
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Modo activo: ${_selectedMode.name}',
-                    ),
-                  ),
+                  SnackBar(content: Text('Modo activo: ${_selectedMode.name}')),
                 );
               },
               child: const Text('Guardar configuración'),
