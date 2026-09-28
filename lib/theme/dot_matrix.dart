@@ -184,12 +184,14 @@ class DotText extends StatelessWidget {
     this.gap = 2,
     this.color = Nothing.ink,
     this.letterGap = 1,
+    this.motion,
   });
 
   final String text;
   final double dot;
   final double gap;
   final Color color;
+  final DotMotion? motion;
 
   /// Separación entre caracteres, en columnas de la rejilla.
   final int letterGap;
@@ -212,7 +214,15 @@ class DotText extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     label: text,
-    child: DotMatrix(_rows, dot: dot, gap: gap, color: color),
+    child: motion == null
+        ? DotMatrix(_rows, dot: dot, gap: gap, color: color)
+        : AnimatedDotMatrix(
+            _rows,
+            motion: motion!,
+            dot: dot,
+            gap: gap,
+            color: color,
+          ),
   );
 }
 
@@ -228,6 +238,7 @@ class DotField extends StatelessWidget {
     this.dot = 3,
     this.gap = 9,
     this.color = Nothing.border,
+    this.motion,
   });
 
   final int columns;
@@ -235,16 +246,128 @@ class DotField extends StatelessWidget {
   final double dot;
   final double gap;
   final Color color;
+  final DotMotion? motion;
 
   @override
-  Widget build(BuildContext context) => ExcludeSemantics(
-    child: DotMatrix(
-      List.filled(rows, '1' * columns),
-      dot: dot,
-      gap: gap,
-      color: color,
-    ),
-  );
+  Widget build(BuildContext context) {
+    final pattern = List.filled(rows, '1' * columns);
+    return ExcludeSemantics(
+      child: motion == null
+          ? DotMatrix(pattern, dot: dot, gap: gap, color: color)
+          : AnimatedDotMatrix(
+              pattern,
+              motion: motion!,
+              dot: dot,
+              gap: gap,
+              color: color,
+            ),
+    );
+  }
+}
+
+/// Cómo se mueven los puntos.
+enum DotMotion {
+  /// Se encienden en diagonal, una sola vez. Para entradas.
+  reveal,
+
+  /// Banda de brillo que recorre la rejilla en bucle. Reservado a estados de
+  /// espera: comunica «esto sigue vivo» sin ocupar sitio ni texto.
+  sweep,
+
+  /// Respiración suave del conjunto. Para marcas y decoración.
+  pulse,
+}
+
+/// Matriz de puntos animada.
+///
+/// El bucle solo debe usarse donde signifique algo —esperando una tarjeta, por
+/// ejemplo—: animar en bucle por decorar gasta batería y distrae a quien está
+/// intentando leer la pantalla.
+class AnimatedDotMatrix extends StatefulWidget {
+  const AnimatedDotMatrix(
+    this.pattern, {
+    super.key,
+    this.motion = DotMotion.reveal,
+    this.dot = 4,
+    this.gap = 2,
+    this.color = Nothing.ink,
+  });
+
+  final List<String> pattern;
+  final DotMotion motion;
+  final double dot;
+  final double gap;
+  final Color color;
+
+  @override
+  State<AnimatedDotMatrix> createState() => _AnimatedDotMatrixState();
+}
+
+class _AnimatedDotMatrixState extends State<AnimatedDotMatrix>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: switch (widget.motion) {
+        DotMotion.reveal => const Duration(milliseconds: 420),
+        DotMotion.sweep => const Duration(milliseconds: 1700),
+        DotMotion.pulse => const Duration(milliseconds: 1600),
+      },
+    );
+
+    switch (widget.motion) {
+      case DotMotion.reveal:
+        _controller.forward();
+      case DotMotion.sweep:
+        _controller.repeat();
+      case DotMotion.pulse:
+        _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cols = widget.pattern.isEmpty ? 0 : widget.pattern.first.length;
+    final stepSize = widget.dot + widget.gap;
+
+    // Con las animaciones desactivadas en el sistema, matriz quieta y opaca.
+    if (MediaQuery.of(context).disableAnimations) {
+      return DotMatrix(
+        widget.pattern,
+        dot: widget.dot,
+        gap: widget.gap,
+        color: widget.color,
+      );
+    }
+
+    return SizedBox(
+      width: cols * stepSize - widget.gap,
+      height: widget.pattern.length * stepSize - widget.gap,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) => CustomPaint(
+          painter: _DotPainter(
+            pattern: widget.pattern,
+            dot: widget.dot,
+            step: stepSize,
+            color: widget.color,
+            motion: widget.motion,
+            progress: _controller.value,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DotPainter extends CustomPainter {
@@ -253,22 +376,54 @@ class _DotPainter extends CustomPainter {
     required this.dot,
     required this.step,
     required this.color,
+    this.motion,
+    this.progress = 1,
   });
 
   final List<String> pattern;
   final double dot;
   final double step;
   final Color color;
+  final DotMotion? motion;
+  final double progress;
+
+  /// Opacidad de un punto concreto según el movimiento activo.
+  double _alpha(int x, int y, int cols, int rows) {
+    switch (motion) {
+      case null:
+        return 1;
+      case DotMotion.reveal:
+        // Barrido diagonal: el borde es suave para que no parezca un corte.
+        final position = (x + y) / (cols + rows);
+        return ((progress - position) * 4).clamp(0.0, 1.0);
+      case DotMotion.sweep:
+        // La banda entra y sale por fuera de la rejilla, así que no hay
+        // saltos al reiniciar el bucle.
+        final band = progress * (cols + 8) - 4;
+        final distance = (x - band).abs();
+        return (0.35 + 0.65 * (1 - distance / 3).clamp(0.0, 1.0)).clamp(
+          0.0,
+          1.0,
+        );
+      case DotMotion.pulse:
+        return 0.45 + 0.55 * progress;
+    }
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
     final radius = dot / 2;
+    final rows = pattern.length;
+    final cols = pattern.isEmpty ? 0 : pattern.first.length;
+    final paint = Paint();
 
-    for (var y = 0; y < pattern.length; y++) {
+    for (var y = 0; y < rows; y++) {
       final row = pattern[y];
       for (var x = 0; x < row.length; x++) {
         if (row[x] != '1') continue;
+        final alpha = _alpha(x, y, cols, rows);
+        if (alpha <= 0) continue;
+        paint.color = color.withValues(alpha: color.a * alpha);
         canvas.drawCircle(
           Offset(x * step + radius, y * step + radius),
           radius,
@@ -283,5 +438,7 @@ class _DotPainter extends CustomPainter {
       old.color != color ||
       old.dot != dot ||
       old.step != step ||
+      old.motion != motion ||
+      old.progress != progress ||
       !identical(old.pattern, pattern);
 }

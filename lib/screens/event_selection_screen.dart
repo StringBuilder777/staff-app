@@ -26,7 +26,12 @@ class EventSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const DotText('STAFF', dot: 2.5, gap: 1.5),
+      title: const DotText(
+        'STAFF',
+        dot: 2.5,
+        gap: 1.5,
+        motion: DotMotion.reveal,
+      ),
       actions: actions,
     ),
     body: SafeArea(
@@ -45,7 +50,13 @@ class EventSelectionScreen extends StatelessWidget {
                 Expanded(child: SectionLabel('01', 'Eventos')),
                 // Textura de rejilla en la cabecera: da densidad sin competir
                 // con el texto, que es de lo que se quejaba la pantalla vacía.
-                DotField(columns: 7, rows: 4, dot: 2.5, gap: 7),
+                DotField(
+                  columns: 7,
+                  rows: 4,
+                  dot: 2.5,
+                  gap: 7,
+                  motion: DotMotion.sweep,
+                ),
               ],
             ),
           ),
@@ -143,8 +154,9 @@ class _EventRow extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 4, right: 18),
-              child: DotMatrix(
+              child: AnimatedDotMatrix(
                 glyph,
+                motion: DotMotion.reveal,
                 dot: 3,
                 gap: 1.5,
                 color: enabled ? Nothing.accent : Nothing.border,
@@ -189,7 +201,13 @@ class _Footer extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.end,
     children: [
-      const DotText('02', dot: 6, gap: 3, color: Nothing.ink),
+      const DotText(
+        '02',
+        dot: 6,
+        gap: 3,
+        color: Nothing.ink,
+        motion: DotMotion.reveal,
+      ),
       const SizedBox(width: 14),
       const Padding(
         padding: EdgeInsets.only(bottom: 4),
