@@ -513,6 +513,55 @@ async function runTests(): Promise<void> {
     assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
   });
 
+  await test('Función sin permiso: Mentor no valida accesos y devuelve 403', async () => {
+    const dbState = createInitialMockDatabaseState();
+    // Carlos Staff pasa de Registro a Mentor, que no opera los filtros.
+    dbState.staff[0].rol = 'Mentor';
+    const client = createMockSupabaseClient(dbState);
+
+    const req = new Request('http://localhost/functions/v1/staff-scan-nfc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer jwt-staff-valid',
+      },
+      body: JSON.stringify({
+        nfcToken: 'valid-nfc-token-123',
+        accessType: 'checkin',
+      }),
+    });
+
+    const res = await handleStaffScanNfc(req, client);
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+
+    const integrante = dbState.integrantes.find((i) => i.id === 'int-uuid-1');
+    assertEqual(integrante?.checkin_en, null, 'No registró el acceso');
+  });
+
+  await test('Sin alta en staff: devuelve 403 y no se da de alta solo', async () => {
+    const dbState = createInitialMockDatabaseState();
+    dbState.staff = [];
+    const client = createMockSupabaseClient(dbState);
+
+    const req = new Request('http://localhost/functions/v1/staff-scan-nfc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer jwt-staff-valid',
+      },
+      body: JSON.stringify({
+        nfcToken: 'valid-nfc-token-123',
+        accessType: 'checkin',
+      }),
+    });
+
+    const res = await handleStaffScanNfc(req, client);
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+    // El alta automática se retiró a propósito: la función operativa no se
+    // puede deducir desde perfiles.rol.
+    assertEqual(dbState.staff.length, 0, 'No hubo alta automática en staff');
+  });
+
   console.log(`\n🎉 Todas las ${passedCount} pruebas se ejecutaron exitosamente.`);
 }
 
