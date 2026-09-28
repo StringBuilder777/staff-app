@@ -6,6 +6,7 @@ import 'config/backend_config.dart';
 import 'screens/event_selection_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/qr_scanner_screen.dart';
+import 'services/connection_status.dart';
 import 'services/nfc_service.dart';
 import 'services/staff_backend_service.dart';
 
@@ -58,9 +59,24 @@ class _TopBarActions extends StatefulWidget {
 
 class _TopBarActionsState extends State<_TopBarActions> {
   @override
+  void initState() {
+    super.initState();
+    ConnectionStatus.start();
+  }
+
+  @override
+  void dispose() {
+    // Sin esto el temporizador del sondeo sobrevive al widget y deja timers
+    // pendientes que hacen fallar las pruebas de widget.
+    ConnectionStatus.stop();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
+      const _ConnectionDot(),
       if (BackendConfig.mode == BackendMode.cloud)
         IconButton(
           icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
@@ -74,15 +90,53 @@ class _TopBarActionsState extends State<_TopBarActions> {
             await Supabase.instance.client.auth.signOut();
           },
         ),
-      IconButton(
-        icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-        tooltip: 'Configuración de conexión',
-        onPressed: () async {
-          await _showConfigSheet(context);
-          if (mounted) setState(() {});
-        },
-      ),
     ],
+  );
+}
+
+/// Luz de conexión con las Edge Functions: verde responde, rojo no.
+///
+/// Reemplaza al aviso de texto con el modo activo. Al operar siempre contra
+/// Supabase, el modo dejó de ser información útil y lo único que importa de un
+/// vistazo es si hay servidor al otro lado.
+class _ConnectionDot extends StatelessWidget {
+  const _ConnectionDot();
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool?>(
+    valueListenable: ConnectionStatus.isOnline,
+    builder: (context, online, _) {
+      final (color, label) = switch (online) {
+        true => (_Colors.success, 'Conectado'),
+        false => (const Color(0xFFDC2626), 'Sin conexión con el servidor'),
+        null => (_Colors.muted, 'Comprobando conexión'),
+      };
+
+      return Tooltip(
+        message: label,
+        child: Semantics(
+          label: label,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Container(
+              width: 13,
+              height: 13,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.35),
+                    blurRadius: 7,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -140,31 +194,7 @@ class _HomeScreenState extends State<HomeScreen> {
     appBar: AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      actions: [
-        // El AuthGate devuelve al login en cuanto la sesión se cierra, así que
-        // aquí no hace falta navegar.
-        if (BackendConfig.mode == BackendMode.cloud)
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
-            tooltip: 'Cerrar sesión',
-            onPressed: () async {
-              // Los estáticos sobreviven al cierre de sesión: sin limpiarlos,
-              // el siguiente staff heredaría el token y la última credencial
-              // del anterior, y los accesos se le atribuirían a quien no fue.
-              BackendConfig.staffAuthToken = '';
-              BackendConfig.lastIssuedNfcToken = '';
-              await Supabase.instance.client.auth.signOut();
-            },
-          ),
-        IconButton(
-          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-          tooltip: 'Configuración de conexión',
-          onPressed: () async {
-            await _showConfigSheet(context);
-            setState(() {});
-          },
-        ),
-      ],
+      actions: const [_TopBarActions()],
     ),
     body: SafeArea(
       child: Padding(
@@ -185,62 +215,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const Text(
               'Selecciona una operación para continuar.',
               style: TextStyle(fontSize: 16, color: _Colors.muted),
-            ),
-            const SizedBox(height: 14),
-            InkWell(
-              onTap: () async {
-                await _showConfigSheet(context);
-                setState(() {});
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: BackendConfig.isSimulation
-                      ? const Color(0xFFFFF7ED)
-                      : const Color(0xFFE6FFFA),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: BackendConfig.isSimulation
-                        ? const Color(0xFFFFEDD5)
-                        : const Color(0xFFB2F5EA),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      BackendConfig.isSimulation
-                          ? Icons.offline_bolt_rounded
-                          : Icons.cloud_done_rounded,
-                      size: 18,
-                      color: BackendConfig.isSimulation
-                          ? const Color(0xFFC2410C)
-                          : _Colors.teal,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Modo: ${BackendConfig.modeLabel}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: BackendConfig.isSimulation
-                            ? const Color(0xFF9A3412)
-                            : _Colors.navy,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: _Colors.muted,
-                    ),
-                  ],
-                ),
-              ),
             ),
             const SizedBox(height: 28),
             _ActionCard(
@@ -286,17 +260,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Hoja de configuración de conexión.
 ///
-/// Es una función suelta y no un método porque la usan tanto la pantalla de
-/// inicio como las acciones de la barra superior, que viven en widgets
-/// distintos.
-Future<void> _showConfigSheet(BuildContext context) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => const _BackendConfigModal(),
-    );
-
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
   @override
@@ -399,33 +362,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  Future<void> _showConfigSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => const _BackendConfigModal(),
-    );
-    if (!mounted) return;
-    setState(() {
-      if (BackendConfig.isSimulation && _participants.isEmpty) {
-        _participants = _simulatedParticipants;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('Registro de equipo'),
       backgroundColor: Colors.transparent,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-          tooltip: 'Configuración de conexión',
-          onPressed: _showConfigSheet,
-        ),
-      ],
+      actions: const [_TopBarActions()],
     ),
     body: SafeArea(
       child: AnimatedSwitcher(
@@ -444,55 +386,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isSimulation) ...[
-            InkWell(
-              onTap: _showConfigSheet,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                margin: const EdgeInsets.only(bottom: 18),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6FFFA),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFB2F5EA)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.cloud_done_rounded,
-                      color: _Colors.teal,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '${BackendConfig.modeLabel}: ${BackendConfig.functionsUrl}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: _Colors.navy,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: _Colors.muted,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
           Text(
             isSimulation
                 ? 'Escanea el QR del equipo'
-                : 'Consulta de equipo por QR',
+                : 'Escanea el QR del equipo',
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
@@ -558,72 +455,39 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             const SizedBox(height: 16),
             FilledButton.icon(
               style: _primaryButtonStyle,
-              onPressed: _openCameraScanner,
-              icon: const Icon(Icons.camera_alt_rounded),
-              label: const Text('Abrir cámara para escanear QR'),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                const Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    'O ingresa el código manualmente',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ),
-                const Expanded(child: Divider()),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _qrController,
-              decoration: InputDecoration(
-                labelText: 'Token QR del equipo',
-                hintText: 'Ej. 52cfc67e-... o pega el token QR',
-                prefixIcon: const Icon(Icons.qr_code_2_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear_rounded),
-                  onPressed: () => _qrController.clear(),
-                ),
+              // Bloqueado mientras se consulta el equipo, para que un segundo
+              // escaneo no pise al primero.
+              onPressed: _isLoading ? null : _openCameraScanner,
+              icon: _isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.camera_alt_rounded),
+              label: Text(
+                _isLoading
+                    ? 'Consultando equipo...'
+                    : 'Abrir cámara y escanear QR',
               ),
-              onSubmitted: (_) => _fetchTeamByQr(),
             ),
           ],
           if (_errorMessage != null) ...[
             const SizedBox(height: 16),
             _WarningBanner(message: _errorMessage!),
           ],
-          const SizedBox(height: 20),
-          if (isSimulation)
+          if (isSimulation) ...[
+            const SizedBox(height: 20),
             FilledButton.icon(
               style: _primaryButtonStyle,
               onPressed: _loadSimulatedTeam,
               icon: const Icon(Icons.qr_code_scanner),
               label: const Text('Simular lectura de QR'),
-            )
-          else
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              onPressed: _isLoading ? null : _fetchTeamByQr,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.search_rounded),
-              label: const Text('Consultar equipo por QR'),
             ),
+          ],
         ],
       ),
     );
@@ -1137,21 +1001,7 @@ class _EventScanScreenState extends State<EventScanScreen>
     appBar: AppBar(
       title: Text(widget.event.name),
       backgroundColor: Colors.transparent,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-          tooltip: 'Configuración de conexión',
-          onPressed: () async {
-            await showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              showDragHandle: true,
-              builder: (sheetContext) => const _BackendConfigModal(),
-            );
-            setState(() {});
-          },
-        ),
-      ],
+      actions: [_TopBarActions()],
     ),
     body: Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
@@ -1574,139 +1424,4 @@ class _WarningBanner extends StatelessWidget {
       ],
     ),
   );
-}
-
-class _BackendConfigModal extends StatefulWidget {
-  const _BackendConfigModal();
-
-  @override
-  State<_BackendConfigModal> createState() => _BackendConfigModalState();
-}
-
-class _BackendConfigModalState extends State<_BackendConfigModal> {
-  late BackendMode _selectedMode;
-  late TextEditingController _tunnelController;
-  late TextEditingController _tokenController;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedMode = BackendConfig.mode;
-    _tunnelController = TextEditingController(
-      text: BackendConfig.tunnelBaseUrl,
-    );
-    _tokenController = TextEditingController(
-      text: BackendConfig.staffAuthToken,
-    );
-  }
-
-  @override
-  void dispose() {
-    _tunnelController.dispose();
-    _tokenController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        24,
-        8,
-        24,
-        MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Configuración de Conexión',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: _Colors.navy,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Selecciona el modo de comunicación con Supabase Edge Functions:',
-              style: TextStyle(color: _Colors.muted),
-            ),
-            const SizedBox(height: 14),
-            RadioListTile<BackendMode>(
-              title: const Text('Túnel HTTPS (Cloudflare / localtunnel)'),
-              subtitle: const Text(
-                'Recomendado: Cloudflare Tunnel o localtunnel',
-              ),
-              value: BackendMode.tunnel,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            if (_selectedMode == BackendMode.tunnel)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-                child: TextField(
-                  controller: _tunnelController,
-                  decoration: const InputDecoration(
-                    labelText: 'URL del túnel',
-                    hintText: 'https://xyz.trycloudflare.com/functions/v1',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-            RadioListTile<BackendMode>(
-              title: const Text('Red Local Wi-Fi (IP de la Mac)'),
-              subtitle: const Text('http://10.0.40.78:54321/functions/v1'),
-              value: BackendMode.localNetwork,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            RadioListTile<BackendMode>(
-              title: const Text('Supabase Cloud (Remoto)'),
-              subtitle: const Text('uopfoekxkluotowilzaa.supabase.co'),
-              value: BackendMode.cloud,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            RadioListTile<BackendMode>(
-              title: const Text('Modo Simulación (Offline)'),
-              subtitle: const Text(
-                'Prueba de interfaz sin conexión al servidor',
-              ),
-              value: BackendMode.simulation,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tokenController,
-              decoration: const InputDecoration(
-                labelText: 'JWT Token de Staff (Opcional si --no-verify-jwt)',
-                hintText: 'Pega el token Bearer para autenticación',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            FilledButton(
-              style: _primaryButtonStyle,
-              onPressed: () {
-                setState(() {
-                  BackendConfig.mode = _selectedMode;
-                  BackendConfig.tunnelBaseUrl = _tunnelController.text.trim();
-                  BackendConfig.staffAuthToken = _tokenController.text.trim();
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Modo activo: ${_selectedMode.name}')),
-                );
-              },
-              child: const Text('Guardar configuración'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
