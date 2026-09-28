@@ -29,7 +29,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Check-in'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Simular lectura NFC'));
+    // PrimaryAction pinta las etiquetas en versales.
+    await tester.tap(find.text('SIMULAR LECTURA NFC'));
     await tester.pumpAndSettle();
 
     expect(find.text('Ana Torres'), findsOneWidget);
