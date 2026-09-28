@@ -17,17 +17,17 @@ void main() {
     // cloud y estas pruebas ejercitan la interfaz de simulación.
     BackendConfig.mode = BackendMode.simulation;
     await abrirHackathon(tester);
-    expect(find.text('Registro'), findsOneWidget);
-    expect(find.text('Eventos'), findsOneWidget);
+    expect(find.text('REGISTRO'), findsOneWidget);
+    expect(find.text('EVENTOS'), findsOneWidget);
   });
 
   testWidgets('shows participant data after an event NFC read', (tester) async {
     BackendConfig.mode = BackendMode.simulation;
     await abrirHackathon(tester);
 
-    await tester.tap(find.text('Eventos'));
+    await tester.tap(find.text('EVENTOS'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Check-in'));
+    await tester.tap(find.text('CHECK-IN'));
     await tester.pumpAndSettle();
     // PrimaryAction pinta las etiquetas en versales.
     await tester.tap(find.text('SIMULAR LECTURA NFC'));
@@ -44,16 +44,16 @@ void main() {
     BackendConfig.mode = BackendMode.simulation;
     await abrirHackathon(tester);
 
-    await tester.tap(find.text('Registro'));
+    await tester.tap(find.text('REGISTRO'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Simular lectura de QR'), findsOneWidget);
-    await tester.tap(find.text('Simular lectura de QR'));
+    expect(find.text('SIMULAR LECTURA DE QR'), findsOneWidget);
+    await tester.tap(find.text('SIMULAR LECTURA DE QR'));
     await tester.pumpAndSettle();
 
     expect(find.text('Equipo Boreal'), findsOneWidget);
     expect(find.text('Ana Torres'), findsOneWidget);
-    expect(find.text('Escribir NFC'), findsWidgets);
+    expect(find.text('ESCRIBIR NFC'), findsWidgets);
   });
 
   testWidgets(
@@ -62,14 +62,14 @@ void main() {
       BackendConfig.mode = BackendMode.tunnel;
       await abrirHackathon(tester);
 
-      await tester.tap(find.text('Registro'));
+      await tester.tap(find.text('REGISTRO'));
       await tester.pumpAndSettle();
 
       // The simulation button is gone
-      expect(find.text('Simular lectura de QR'), findsNothing);
+      expect(find.text('SIMULAR LECTURA DE QR'), findsNothing);
       // Solo queda el escaneo por cámara: la entrada manual del token se
       // retiró para dejar un único camino.
-      expect(find.text('Abrir cámara y escanear QR'), findsOneWidget);
+      expect(find.text('ABRIR CÁMARA Y ESCANEAR QR'), findsOneWidget);
       expect(find.text('Consultar equipo por QR'), findsNothing);
       expect(find.text('Token QR del equipo'), findsNothing);
 

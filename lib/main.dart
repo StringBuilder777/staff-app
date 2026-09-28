@@ -34,11 +34,7 @@ class StaffApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Staff',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: _Colors.teal),
-      scaffoldBackgroundColor: const Color(0xFFF4F7FA),
-      useMaterial3: true,
-    ),
+    theme: Nothing.theme(),
     home: const AuthGate(),
   );
 }
@@ -82,7 +78,7 @@ class _TopBarActionsState extends State<_TopBarActions> {
       const _ConnectionDot(),
       if (BackendConfig.mode == BackendMode.cloud)
         IconButton(
-          icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
+          icon: const Icon(Icons.logout_rounded, color: Nothing.ink),
           tooltip: 'Cerrar sesión',
           onPressed: () async {
             // Los estáticos sobreviven al cierre de sesión: sin limpiarlos, el
@@ -110,9 +106,9 @@ class _ConnectionDot extends StatelessWidget {
     valueListenable: ConnectionStatus.isOnline,
     builder: (context, online, _) {
       final (color, label) = switch (online) {
-        true => (_Colors.success, 'Conectado'),
+        true => (Nothing.ok, 'Conectado'),
         false => (const Color(0xFFDC2626), 'Sin conexión con el servidor'),
-        null => (_Colors.muted, 'Comprobando conexión'),
+        null => (Nothing.muted, 'Comprobando conexión'),
       };
 
       return Tooltip(
@@ -201,58 +197,70 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
     body: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 24),
-            const Text(
-              'Inicio',
-              style: TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.w800,
-                color: _Colors.navy,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Selecciona una operación para continuar.',
-              style: TextStyle(fontSize: 16, color: _Colors.muted),
-            ),
-            const SizedBox(height: 28),
-            _ActionCard(
-              title: 'Registro',
-              description:
-                  'Escanea el QR del equipo y escribe sus tarjetas NFC.',
-              icon: Icons.group_outlined,
-              primary: true,
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const RegistrationScreen(),
-                  ),
-                );
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 16),
-            _ActionCard(
-              title: 'Eventos',
-              description: 'Valida asistentes en check-in, comida y desayuno.',
-              icon: Icons.event_available_outlined,
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const EventsScreen()),
-                );
-                setState(() {});
-              },
-            ),
-            const Spacer(),
-            const Center(
+            const Reveal(child: SectionLabel('01', 'Hackathon')),
+            const SizedBox(height: 20),
+            Reveal(step: 1, child: Text('INICIO', style: Nothing.display(46))),
+            const SizedBox(height: 14),
+            const Reveal(
+              step: 2,
               child: Text(
-                'Staff · Operación de evento',
-                style: TextStyle(color: _Colors.muted),
+                'Selecciona una operación para continuar.',
+                style: Nothing.body,
               ),
+            ),
+            const SizedBox(height: 32),
+            const RevealLine(step: 3),
+            Reveal(
+              step: 3,
+              child: _ActionCard(
+                index: '01',
+                title: 'Registro',
+                description:
+                    'Escanea el QR del equipo y escribe sus tarjetas NFC.',
+                glyph: DotGlyphs.qr,
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RegistrationScreen(),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+            const RevealLine(step: 4),
+            Reveal(
+              step: 4,
+              child: _ActionCard(
+                index: '02',
+                title: 'Eventos',
+                description:
+                    'Valida asistentes en check-in, comida y desayuno.',
+                glyph: DotGlyphs.nfc,
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const EventsScreen(),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+            const RevealLine(step: 4),
+            const Spacer(),
+            const Reveal(
+              step: 4,
+              child: DotField(columns: 16, rows: 3, dot: 3, gap: 8),
             ),
           ],
         ),
@@ -385,112 +393,71 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     return SingleChildScrollView(
       key: const ValueKey('qr-step'),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(
+        Nothing.gutter,
+        8,
+        Nothing.gutter,
+        Nothing.gutter,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            isSimulation
-                ? 'Escanea el QR del equipo'
-                : 'Escanea el QR del equipo',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: _Colors.navy,
+          const Reveal(child: SectionLabel('01', 'Equipo')),
+          const SizedBox(height: 20),
+          Reveal(
+            step: 1,
+            child: Text('ESCANEA\nEL QR', style: Nothing.display(46)),
+          ),
+          const SizedBox(height: 14),
+          Reveal(
+            step: 2,
+            child: Text(
+              isSimulation
+                  ? 'El código identifica el equipo y permite confirmar a todos sus integrantes.'
+                  : 'Apunta con la cámara al código QR del equipo.',
+              style: Nothing.body,
             ),
           ),
-          const SizedBox(height: 10),
-          Text(
-            isSimulation
-                ? 'El código identifica el equipo y permite confirmar a todos sus integrantes.'
-                : 'Apunta con la cámara al código QR o introduce el token registrado en Supabase.',
-            style: const TextStyle(fontSize: 16, color: _Colors.muted),
-          ),
-          const SizedBox(height: 24),
-          InkWell(
-            onTap: isSimulation ? _loadSimulatedTeam : _openCameraScanner,
-            borderRadius: BorderRadius.circular(28),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                border: !isSimulation
-                    ? Border.all(color: const Color(0xFFB2F5EA), width: 1.5)
-                    : null,
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.qr_code_scanner_rounded,
-                    size: 100,
-                    color: _Colors.navy,
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    isSimulation
-                        ? 'Cámara lista para leer QR'
-                        : 'Toca para abrir cámara y escanear QR',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                      color: _Colors.navy,
-                    ),
-                  ),
-                  if (!isSimulation) ...[
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Activa la cámara para lectura instantánea',
-                      style: TextStyle(
-                        color: _Colors.teal,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
+          const SizedBox(height: 40),
+          Reveal(
+            step: 3,
+            child: Center(
+              child: DotMatrix(
+                DotGlyphs.qr,
+                dot: 11,
+                gap: 6,
+                color: Nothing.ink,
               ),
             ),
           ),
-          if (!isSimulation) ...[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              style: _primaryButtonStyle,
-              // Bloqueado mientras se consulta el equipo, para que un segundo
-              // escaneo no pise al primero.
-              onPressed: _isLoading ? null : _openCameraScanner,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.camera_alt_rounded),
-              label: Text(
-                _isLoading
-                    ? 'Consultando equipo...'
-                    : 'Abrir cámara y escanear QR',
-              ),
-            ),
-          ],
+          const SizedBox(height: 40),
           if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
-            _WarningBanner(message: _errorMessage!),
+            Notice(message: _errorMessage!),
+            const SizedBox(height: 24),
           ],
-          if (isSimulation) ...[
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              style: _primaryButtonStyle,
-              onPressed: _loadSimulatedTeam,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Simular lectura de QR'),
+          if (isSimulation)
+            Reveal(
+              step: 4,
+              child: PrimaryAction(
+                label: 'Simular lectura de QR',
+                icon: Icons.qr_code_scanner,
+                onPressed: _loadSimulatedTeam,
+              ),
+            )
+          else
+            Reveal(
+              step: 4,
+              child: PrimaryAction(
+                // Bloqueado mientras se consulta el equipo, para que un
+                // segundo escaneo no pise al primero.
+                label: _isLoading
+                    ? 'Consultando equipo'
+                    : 'Abrir cámara y escanear QR',
+                icon: Icons.camera_alt_rounded,
+                busy: _isLoading,
+                onPressed: _openCameraScanner,
+              ),
             ),
-          ],
         ],
       ),
     );
@@ -500,82 +467,63 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     key: const ValueKey('team-details'),
     padding: const EdgeInsets.all(20),
     children: [
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 26,
-              backgroundColor: Color(0xFFE4F6F3),
-              child: Icon(Icons.groups_rounded, color: _Colors.teal, size: 28),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _teamName,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: _Colors.navy,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${_participants.length} participantes confirmados',
-                    style: const TextStyle(color: _Colors.muted),
-                  ),
-                ],
+      const SectionLabel('02', 'Equipo confirmado'),
+      const SizedBox(height: 18),
+      Text(_teamName, style: Nothing.display(36)),
+      const SizedBox(height: 24),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          DisplayNumber(
+            value: '${_participants.length}'.padLeft(2, '0'),
+            caption: 'Integrantes',
+            size: 46,
+          ),
+          const SizedBox(width: 36),
+          DisplayNumber(
+            value: '${_writtenParticipantIds.length}'.padLeft(2, '0'),
+            caption: 'Credenciales',
+            size: 46,
+            color: _writtenParticipantIds.length >= _participants.length
+                ? Nothing.ok
+                : Nothing.ink,
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: () => setState(() => _teamLoaded = false),
+            child: const Text(
+              'CAMBIAR QR',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.4,
+                color: Nothing.ink,
               ),
             ),
-            const Icon(Icons.verified_rounded, color: _Colors.success),
-          ],
-        ),
-      ),
-      const SizedBox(height: 18),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Tarjetas de participantes',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: _Colors.navy,
-            ),
-          ),
-          TextButton.icon(
-            onPressed: () => setState(() => _teamLoaded = false),
-            icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-            label: const Text('Cambiar QR'),
           ),
         ],
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: 28),
       const Text(
         'Escribe una tarjeta individual por cada integrante.',
-        style: TextStyle(color: _Colors.muted),
+        style: Nothing.body,
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 20),
+      const Hairline(),
       ..._participants.indexed.map((entry) {
         final p = entry.$2;
         final isWritten =
             _writtenParticipantIds.contains(p.id) ||
             _writtenParticipantIds.contains(entry.$1.toString());
         return _ParticipantRow(
+          index: '${entry.$1 + 1}'.padLeft(2, '0'),
           name: p.fullName,
           written: isWritten,
           nfcToken: p.nfcToken,
           onWrite: () => _writeCard(p, entry.$1),
         );
       }),
-      const SizedBox(height: 18),
+      const SizedBox(height: 24),
       if (_writtenParticipantIds.length >= _participants.length &&
           _participants.isNotEmpty)
         const _SuccessBanner(
@@ -604,7 +552,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.nfc_rounded, size: 52, color: _Colors.teal),
+              const Icon(Icons.nfc_rounded, size: 52, color: Nothing.ink),
               const SizedBox(height: 12),
               Text(
                 'Escribir tarjeta de ${participant.fullName}',
@@ -620,7 +568,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ? 'Acerca una tarjeta NFC vacía al teléfono.'
                     : 'Se emitirá la credencial y después deberás acercar una tarjeta NFC escribible.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _Colors.muted),
+                style: const TextStyle(color: Nothing.muted),
               ),
               if (localError != null) ...[
                 const SizedBox(height: 14),
@@ -705,7 +653,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                   content: Text(
                                     'Tarjeta NFC escrita y vinculada correctamente.',
                                   ),
-                                  backgroundColor: _Colors.success,
+                                  backgroundColor: Nothing.ok,
                                   duration: Duration(seconds: 4),
                                 ),
                               );
@@ -789,37 +737,47 @@ class EventsScreen extends StatelessWidget {
     ),
     body: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
         child: ListView(
           children: [
-            const Text(
-              'Selecciona un evento',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: _Colors.navy,
+            const Reveal(child: SectionLabel('02', 'Accesos')),
+            const SizedBox(height: 20),
+            Reveal(
+              step: 1,
+              child: Text('SELECCIONA\nUN EVENTO', style: Nothing.display(40)),
+            ),
+            const SizedBox(height: 14),
+            const Reveal(
+              step: 2,
+              child: Text(
+                'Cada opción abre el lector NFC para ese momento.',
+                style: Nothing.body,
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Cada opción abre el lector NFC para ese momento.',
-              style: TextStyle(fontSize: 16, color: _Colors.muted),
-            ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
+            const RevealLine(step: 3),
             ..._events.indexed.expand(
               (entry) => [
-                _ActionCard(
-                  title: entry.$2.name,
-                  description: entry.$2.description,
-                  icon: entry.$2.icon,
-                  primary: entry.$1 == 0,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => EventScanScreen(event: entry.$2),
+                Reveal(
+                  step: 3 + entry.$1,
+                  child: _ActionCard(
+                    index: '0${entry.$1 + 1}',
+                    title: entry.$2.name,
+                    description: entry.$2.description,
+                    glyph: DotGlyphs.nfc,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => EventScanScreen(event: entry.$2),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                RevealLine(step: 3 + entry.$1),
               ],
             ),
           ],
@@ -1187,62 +1145,57 @@ class _ScannedParticipant {
   final String credential;
 }
 
+/// Fila de operación. Sin tarjeta: número grande, glifo de puntos y separador,
+/// igual que las filas de evento. El área pulsable es alta porque se opera de
+/// pie y con prisa.
 class _ActionCard extends StatelessWidget {
   const _ActionCard({
+    required this.index,
     required this.title,
     required this.description,
-    required this.icon,
+    required this.glyph,
     required this.onTap,
-    this.primary = false,
   });
+
+  final String index;
   final String title;
   final String description;
-  final IconData icon;
+  final List<String> glyph;
   final VoidCallback onTap;
-  final bool primary;
+
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(24),
-    child: Ink(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: primary ? _Colors.teal : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 22),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 44, color: primary ? Colors.white : _Colors.navy),
-          const SizedBox(width: 18),
+          SizedBox(width: 54, child: Text(index, style: Nothing.display(34))),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, right: 18),
+            child: DotMatrix(glyph, dot: 3, gap: 1.5, color: Nothing.ink),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.w800,
-                    color: primary ? Colors.white : _Colors.navy,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.35,
-                    color: primary
-                        ? Colors.white.withValues(alpha: .9)
-                        : _Colors.muted,
-                  ),
-                ),
+                Text(title.toUpperCase(), style: Nothing.display(24)),
+                const SizedBox(height: 8),
+                Text(description, style: Nothing.body),
               ],
             ),
           ),
-          Icon(
-            Icons.arrow_forward_ios_rounded,
-            color: primary ? Colors.white : _Colors.navy,
+          const Padding(
+            padding: EdgeInsets.only(top: 4, left: 8),
+            child: Text(
+              '→',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Nothing.ink,
+              ),
+            ),
           ),
         ],
       ),
@@ -1250,68 +1203,81 @@ class _ActionCard extends StatelessWidget {
   );
 }
 
+/// Integrante del equipo. Fila editorial con separador, sin tarjeta ni avatar:
+/// la sección 15 de DESIGN.md desaconseja las fotos de perfil circulares.
 class _ParticipantRow extends StatelessWidget {
   const _ParticipantRow({
+    required this.index,
     required this.name,
     required this.written,
     this.nfcToken,
     required this.onWrite,
   });
+
+  final String index;
   final String name;
   final bool written;
   final String? nfcToken;
   final VoidCallback onWrite;
+
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(top: 10),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      children: [
-        const CircleAvatar(
-          backgroundColor: Color(0xFFEAF0F5),
-          child: Icon(Icons.person_outline, color: _Colors.navy),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
+  Widget build(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 40,
+              child: Text(
+                index,
+                style: Nothing.meta.copyWith(color: Nothing.muted),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Nothing.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    // `written` sale de `nfc_activa` del backend: significa
+                    // que la credencial está emitida, no que se haya escrito
+                    // una tarjeta física en esta sesión.
+                    written ? 'Credencial activa' : 'Pendiente de escribir',
+                    style: Nothing.label.copyWith(
+                      color: written ? Nothing.ok : Nothing.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // El botón nunca se oculta: si alguien pierde la tarjeta hay que
+            // poder reescribirla sin volver a escanear el QR del equipo.
+            TextButton(
+              onPressed: onWrite,
+              child: Text(
+                written ? 'REESCRIBIR' : 'ESCRIBIR NFC',
                 style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: _Colors.navy,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: Nothing.ink,
                 ),
               ),
-              Text(
-                // `written` sale de `nfc_activa` del backend: significa que la
-                // credencial está emitida, no que se haya escrito una tarjeta
-                // física en esta sesión.
-                written ? 'Credencial activa' : 'Pendiente de escribir',
-                style: TextStyle(
-                  color: written ? _Colors.success : _Colors.muted,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-        if (written) ...[
-          const Icon(Icons.check_circle_rounded, color: _Colors.success),
-          const SizedBox(width: 4),
-        ],
-        // El botón nunca se oculta: si alguien pierde la tarjeta hay que poder
-        // reescribirla sin tener que volver a escanear el QR del equipo.
-        TextButton(
-          onPressed: onWrite,
-          child: Text(written ? 'Reescribir' : 'Escribir NFC'),
-        ),
-      ],
-    ),
+      ),
+      const Hairline(),
+    ],
   );
 }
 
@@ -1328,7 +1294,7 @@ class _SuccessBanner extends StatelessWidget {
     ),
     child: Row(
       children: [
-        const Icon(Icons.check_circle_rounded, color: _Colors.success),
+        const Icon(Icons.check_circle_rounded, color: Nothing.ok),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
@@ -1349,44 +1315,16 @@ class _Participant {
   final String name;
 }
 
-class _Colors {
-  static const navy = Color(0xFF102A43);
-  static const teal = Color(0xFF0FA99A);
-  static const success = Color(0xFF059669);
-  static const muted = Color(0xFF627D98);
-}
-
+/// Estilo de los botones del sheet de escritura. El resto de la app usa
+/// PrimaryAction; aquí se conserva el estilo suelto porque los botones viven
+/// dentro de un StatefulBuilder con su propio estado de envío.
 final _primaryButtonStyle = FilledButton.styleFrom(
+  backgroundColor: Nothing.ink,
+  foregroundColor: Colors.white,
+  elevation: 0,
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(4)),
+  ),
   minimumSize: const Size.fromHeight(56),
   textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
 );
-
-class _WarningBanner extends StatelessWidget {
-  const _WarningBanner({required this.message});
-  final String message;
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFEF3C7),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: const Color(0xFFFDE68A)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF92400E),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
