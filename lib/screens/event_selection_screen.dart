@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/dot_matrix.dart';
 import '../theme/nothing.dart';
 
 /// Primera pantalla tras el acceso: elegir sobre qué evento se va a trabajar.
@@ -23,7 +24,10 @@ class EventSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('STAFF'), actions: actions),
+    appBar: AppBar(
+      title: const DotText('STAFF', dot: 2.5, gap: 1.5),
+      actions: actions,
+    ),
     body: SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(
@@ -33,20 +37,29 @@ class EventSelectionScreen extends StatelessWidget {
           Nothing.gutter,
         ),
         children: [
-          const SectionLabel('01', 'Eventos'),
-          const SizedBox(height: 20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(child: SectionLabel('01', 'Eventos')),
+              // Textura de rejilla en la cabecera: da densidad sin competir
+              // con el texto, que es de lo que se quejaba la pantalla vacía.
+              const DotField(columns: 7, rows: 4, dot: 2.5, gap: 7),
+            ],
+          ),
+          const SizedBox(height: 24),
           Text('SELECCIONA\nEL EVENTO', style: Nothing.display(44)),
           const SizedBox(height: 16),
           const Text(
             'Los accesos que registres se guardan en el evento que elijas.',
             style: Nothing.body,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 36),
           const Hairline(),
           _EventRow(
             index: '01',
             title: 'Hackathon',
             subtitle: 'Registro de equipos, credenciales y accesos',
+            glyph: DotGlyphs.qr,
             onTap: () => Navigator.of(
               context,
             ).push(MaterialPageRoute<void>(builder: (_) => hackathon)),
@@ -56,19 +69,22 @@ class EventSelectionScreen extends StatelessWidget {
             index: '02',
             title: 'SITEC',
             subtitle: 'Pendiente de configurar',
+            glyph: DotGlyphs.cross,
             enabled: false,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(builder: (_) => const _SitecScreen()),
             ),
           ),
           const Hairline(),
+          const SizedBox(height: 36),
+          const _Footer(),
         ],
       ),
     ),
   );
 }
 
-/// Fila de evento. Sin tarjeta: número grande, título y separador de 1 px.
+/// Fila de evento. Sin tarjeta: número grande, glifo de puntos y separador.
 ///
 /// El área pulsable es alta a propósito; se elige de pie y con prisa, así que
 /// el objetivo táctil manda sobre la densidad de información.
@@ -77,6 +93,7 @@ class _EventRow extends StatelessWidget {
     required this.index,
     required this.title,
     required this.subtitle,
+    required this.glyph,
     required this.onTap,
     this.enabled = true,
   });
@@ -84,6 +101,7 @@ class _EventRow extends StatelessWidget {
   final String index;
   final String title;
   final String subtitle;
+  final List<String> glyph;
   final VoidCallback onTap;
 
   /// Un evento no configurado se pinta apagado pero sigue siendo pulsable: el
@@ -97,17 +115,24 @@ class _EventRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24),
+        padding: const EdgeInsets.symmetric(vertical: 22),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              width: 64,
+              width: 54,
               child: Text(
                 index,
-                style: Nothing.display(
-                  40,
-                ).copyWith(color: enabled ? Nothing.accent : Nothing.border),
+                style: Nothing.display(34).copyWith(color: ink),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, right: 18),
+              child: DotMatrix(
+                glyph,
+                dot: 3,
+                gap: 1.5,
+                color: enabled ? Nothing.accent : Nothing.border,
               ),
             ),
             Expanded(
@@ -116,20 +141,19 @@ class _EventRow extends StatelessWidget {
                 children: [
                   Text(
                     title.toUpperCase(),
-                    style: Nothing.display(26).copyWith(color: ink),
+                    style: Nothing.display(24).copyWith(color: ink),
                   ),
                   const SizedBox(height: 8),
                   Text(subtitle, style: Nothing.body),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
             Padding(
-              padding: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.only(top: 4, left: 8),
               child: Text(
                 '→',
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.w700,
                   color: enabled ? Nothing.ink : Nothing.border,
                 ),
@@ -142,13 +166,33 @@ class _EventRow extends StatelessWidget {
   }
 }
 
+/// Cierre de la pantalla: cifra grande en puntos y marca.
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.end,
+    children: [
+      const DotText('02', dot: 6, gap: 3, color: Nothing.ink),
+      const SizedBox(width: 14),
+      const Padding(
+        padding: EdgeInsets.only(bottom: 4),
+        child: Text('EVENTOS\nACTIVOS', style: Nothing.label),
+      ),
+      const Spacer(),
+      DotField(columns: 5, rows: 5, dot: 3, gap: 7, color: Nothing.border),
+    ],
+  );
+}
+
 /// Marcador para SITEC mientras no se definan sus pantallas.
 class _SitecScreen extends StatelessWidget {
   const _SitecScreen();
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('SITEC')),
+    appBar: AppBar(title: const DotText('SITEC', dot: 2.5, gap: 1.5)),
     body: SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(Nothing.gutter),
@@ -156,7 +200,14 @@ class _SitecScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SectionLabel('02', 'SITEC'),
-            const SizedBox(height: 20),
+            const SizedBox(height: 28),
+            const DotMatrix(
+              DotGlyphs.cross,
+              dot: 7,
+              gap: 4,
+              color: Nothing.border,
+            ),
+            const SizedBox(height: 28),
             Text('TODAVÍA\nNO ESTÁ\nLISTO', style: Nothing.display(40)),
             const SizedBox(height: 20),
             const Text(
