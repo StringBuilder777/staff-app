@@ -6,6 +6,10 @@ import 'config/backend_config.dart';
 import 'screens/event_selection_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/qr_scanner_screen.dart';
+import 'services/connection_status.dart';
+import 'theme/dot_matrix.dart';
+import 'theme/motion.dart';
+import 'theme/nothing.dart';
 import 'services/nfc_service.dart';
 import 'services/staff_backend_service.dart';
 
@@ -30,11 +34,7 @@ class StaffApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Staff',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      colorScheme: ColorScheme.fromSeed(seedColor: _Colors.teal),
-      scaffoldBackgroundColor: const Color(0xFFF4F7FA),
-      useMaterial3: true,
-    ),
+    theme: Nothing.theme(),
     home: const AuthGate(),
   );
 }
@@ -58,12 +58,27 @@ class _TopBarActions extends StatefulWidget {
 
 class _TopBarActionsState extends State<_TopBarActions> {
   @override
+  void initState() {
+    super.initState();
+    ConnectionStatus.start();
+  }
+
+  @override
+  void dispose() {
+    // Sin esto el temporizador del sondeo sobrevive al widget y deja timers
+    // pendientes que hacen fallar las pruebas de widget.
+    ConnectionStatus.stop();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
+      const _ConnectionDot(),
       if (BackendConfig.mode == BackendMode.cloud)
         IconButton(
-          icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
+          icon: const Icon(Icons.logout_rounded, color: Nothing.ink),
           tooltip: 'Cerrar sesión',
           onPressed: () async {
             // Los estáticos sobreviven al cierre de sesión: sin limpiarlos, el
@@ -74,15 +89,53 @@ class _TopBarActionsState extends State<_TopBarActions> {
             await Supabase.instance.client.auth.signOut();
           },
         ),
-      IconButton(
-        icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-        tooltip: 'Configuración de conexión',
-        onPressed: () async {
-          await _showConfigSheet(context);
-          if (mounted) setState(() {});
-        },
-      ),
     ],
+  );
+}
+
+/// Luz de conexión con las Edge Functions: verde responde, rojo no.
+///
+/// Reemplaza al aviso de texto con el modo activo. Al operar siempre contra
+/// Supabase, el modo dejó de ser información útil y lo único que importa de un
+/// vistazo es si hay servidor al otro lado.
+class _ConnectionDot extends StatelessWidget {
+  const _ConnectionDot();
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<bool?>(
+    valueListenable: ConnectionStatus.isOnline,
+    builder: (context, online, _) {
+      final (color, label) = switch (online) {
+        true => (Nothing.ok, 'Conectado'),
+        false => (const Color(0xFFDC2626), 'Sin conexión con el servidor'),
+        null => (Nothing.muted, 'Comprobando conexión'),
+      };
+
+      return Tooltip(
+        message: label,
+        child: Semantics(
+          label: label,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Container(
+              width: 13,
+              height: 13,
+              decoration: BoxDecoration(
+                color: color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.35),
+                    blurRadius: 7,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -140,142 +193,74 @@ class _HomeScreenState extends State<HomeScreen> {
     appBar: AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
-      actions: [
-        // El AuthGate devuelve al login en cuanto la sesión se cierra, así que
-        // aquí no hace falta navegar.
-        if (BackendConfig.mode == BackendMode.cloud)
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: _Colors.navy),
-            tooltip: 'Cerrar sesión',
-            onPressed: () async {
-              // Los estáticos sobreviven al cierre de sesión: sin limpiarlos,
-              // el siguiente staff heredaría el token y la última credencial
-              // del anterior, y los accesos se le atribuirían a quien no fue.
-              BackendConfig.staffAuthToken = '';
-              BackendConfig.lastIssuedNfcToken = '';
-              await Supabase.instance.client.auth.signOut();
-            },
-          ),
-        IconButton(
-          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-          tooltip: 'Configuración de conexión',
-          onPressed: () async {
-            await _showConfigSheet(context);
-            setState(() {});
-          },
-        ),
-      ],
+      actions: const [_TopBarActions()],
     ),
     body: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 24),
-            const Text(
-              'Inicio',
-              style: TextStyle(
-                fontSize: 40,
-                fontWeight: FontWeight.w800,
-                color: _Colors.navy,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Selecciona una operación para continuar.',
-              style: TextStyle(fontSize: 16, color: _Colors.muted),
-            ),
+            const Reveal(child: SectionLabel('01', 'Hackathon')),
+            const SizedBox(height: 20),
+            Reveal(step: 1, child: Text('INICIO', style: Nothing.display(46))),
             const SizedBox(height: 14),
-            InkWell(
-              onTap: () async {
-                await _showConfigSheet(context);
-                setState(() {});
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: BackendConfig.isSimulation
-                      ? const Color(0xFFFFF7ED)
-                      : const Color(0xFFE6FFFA),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: BackendConfig.isSimulation
-                        ? const Color(0xFFFFEDD5)
-                        : const Color(0xFFB2F5EA),
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      BackendConfig.isSimulation
-                          ? Icons.offline_bolt_rounded
-                          : Icons.cloud_done_rounded,
-                      size: 18,
-                      color: BackendConfig.isSimulation
-                          ? const Color(0xFFC2410C)
-                          : _Colors.teal,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Modo: ${BackendConfig.modeLabel}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: BackendConfig.isSimulation
-                            ? const Color(0xFF9A3412)
-                            : _Colors.navy,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: _Colors.muted,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 28),
-            _ActionCard(
-              title: 'Registro',
-              description:
-                  'Escanea el QR del equipo y escribe sus tarjetas NFC.',
-              icon: Icons.group_outlined,
-              primary: true,
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const RegistrationScreen(),
-                  ),
-                );
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 16),
-            _ActionCard(
-              title: 'Eventos',
-              description: 'Valida asistentes en check-in, comida y desayuno.',
-              icon: Icons.event_available_outlined,
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const EventsScreen()),
-                );
-                setState(() {});
-              },
-            ),
-            const Spacer(),
-            const Center(
+            const Reveal(
+              step: 2,
               child: Text(
-                'Staff · Operación de evento',
-                style: TextStyle(color: _Colors.muted),
+                'Selecciona una operación para continuar.',
+                style: Nothing.body,
               ),
+            ),
+            const SizedBox(height: 32),
+            const RevealLine(step: 3),
+            Reveal(
+              step: 3,
+              child: _ActionCard(
+                index: '01',
+                title: 'Registro',
+                description:
+                    'Escanea el QR del equipo y escribe sus tarjetas NFC.',
+                glyph: DotGlyphs.qr,
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RegistrationScreen(),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+            const RevealLine(step: 4),
+            Reveal(
+              step: 4,
+              child: _ActionCard(
+                index: '02',
+                title: 'Eventos',
+                description:
+                    'Valida asistentes en check-in, comida y desayuno.',
+                glyph: DotGlyphs.nfc,
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const EventsScreen(),
+                    ),
+                  );
+                  if (mounted) setState(() {});
+                },
+              ),
+            ),
+            const RevealLine(step: 4),
+            const Spacer(),
+            const Reveal(
+              step: 4,
+              child: DotField(columns: 16, rows: 3, dot: 3, gap: 8),
             ),
           ],
         ),
@@ -286,17 +271,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
 /// Hoja de configuración de conexión.
 ///
-/// Es una función suelta y no un método porque la usan tanto la pantalla de
-/// inicio como las acciones de la barra superior, que viven en widgets
-/// distintos.
-Future<void> _showConfigSheet(BuildContext context) =>
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => const _BackendConfigModal(),
-    );
-
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
   @override
@@ -399,33 +373,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  Future<void> _showConfigSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => const _BackendConfigModal(),
-    );
-    if (!mounted) return;
-    setState(() {
-      if (BackendConfig.isSimulation && _participants.isEmpty) {
-        _participants = _simulatedParticipants;
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('Registro de equipo'),
       backgroundColor: Colors.transparent,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-          tooltip: 'Configuración de conexión',
-          onPressed: _showConfigSheet,
-        ),
-      ],
+      actions: const [_TopBarActions()],
     ),
     body: SafeArea(
       child: AnimatedSwitcher(
@@ -440,189 +393,70 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
     return SingleChildScrollView(
       key: const ValueKey('qr-step'),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(
+        Nothing.gutter,
+        8,
+        Nothing.gutter,
+        Nothing.gutter,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isSimulation) ...[
-            InkWell(
-              onTap: _showConfigSheet,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                margin: const EdgeInsets.only(bottom: 18),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6FFFA),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFFB2F5EA)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.cloud_done_rounded,
-                      color: _Colors.teal,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        '${BackendConfig.modeLabel}: ${BackendConfig.functionsUrl}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: _Colors.navy,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const Icon(
-                      Icons.edit_outlined,
-                      size: 14,
-                      color: _Colors.muted,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-          Text(
-            isSimulation
-                ? 'Escanea el QR del equipo'
-                : 'Consulta de equipo por QR',
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w800,
-              color: _Colors.navy,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            isSimulation
-                ? 'El código identifica el equipo y permite confirmar a todos sus integrantes.'
-                : 'Apunta con la cámara al código QR o introduce el token registrado en Supabase.',
-            style: const TextStyle(fontSize: 16, color: _Colors.muted),
-          ),
-          const SizedBox(height: 24),
-          InkWell(
-            onTap: isSimulation ? _loadSimulatedTeam : _openCameraScanner,
-            borderRadius: BorderRadius.circular(28),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(28),
-                border: !isSimulation
-                    ? Border.all(color: const Color(0xFFB2F5EA), width: 1.5)
-                    : null,
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.qr_code_scanner_rounded,
-                    size: 100,
-                    color: _Colors.navy,
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    isSimulation
-                        ? 'Cámara lista para leer QR'
-                        : 'Toca para abrir cámara y escanear QR',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 18,
-                      color: _Colors.navy,
-                    ),
-                  ),
-                  if (!isSimulation) ...[
-                    const SizedBox(height: 6),
-                    const Text(
-                      'Activa la cámara para lectura instantánea',
-                      style: TextStyle(
-                        color: _Colors.teal,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
-          if (!isSimulation) ...[
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              style: _primaryButtonStyle,
-              onPressed: _openCameraScanner,
-              icon: const Icon(Icons.camera_alt_rounded),
-              label: const Text('Abrir cámara para escanear QR'),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                const Expanded(child: Divider()),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    'O ingresa el código manualmente',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ),
-                const Expanded(child: Divider()),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _qrController,
-              decoration: InputDecoration(
-                labelText: 'Token QR del equipo',
-                hintText: 'Ej. 52cfc67e-... o pega el token QR',
-                prefixIcon: const Icon(Icons.qr_code_2_rounded),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.clear_rounded),
-                  onPressed: () => _qrController.clear(),
-                ),
-              ),
-              onSubmitted: (_) => _fetchTeamByQr(),
-            ),
-          ],
-          if (_errorMessage != null) ...[
-            const SizedBox(height: 16),
-            _WarningBanner(message: _errorMessage!),
-          ],
+          const Reveal(child: SectionLabel('01', 'Equipo')),
           const SizedBox(height: 20),
+          Reveal(
+            step: 1,
+            child: Text('ESCANEA\nEL QR', style: Nothing.display(46)),
+          ),
+          const SizedBox(height: 14),
+          Reveal(
+            step: 2,
+            child: Text(
+              isSimulation
+                  ? 'El código identifica el equipo y permite confirmar a todos sus integrantes.'
+                  : 'Apunta con la cámara al código QR del equipo.',
+              style: Nothing.body,
+            ),
+          ),
+          const SizedBox(height: 40),
+          Reveal(
+            step: 3,
+            child: Center(
+              child: DotMatrix(
+                DotGlyphs.qr,
+                dot: 11,
+                gap: 6,
+                color: Nothing.ink,
+              ),
+            ),
+          ),
+          const SizedBox(height: 40),
+          if (_errorMessage != null) ...[
+            Notice(message: _errorMessage!),
+            const SizedBox(height: 24),
+          ],
           if (isSimulation)
-            FilledButton.icon(
-              style: _primaryButtonStyle,
-              onPressed: _loadSimulatedTeam,
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Simular lectura de QR'),
+            Reveal(
+              step: 4,
+              child: PrimaryAction(
+                label: 'Simular lectura de QR',
+                icon: Icons.qr_code_scanner,
+                onPressed: _loadSimulatedTeam,
+              ),
             )
           else
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(54),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+            Reveal(
+              step: 4,
+              child: PrimaryAction(
+                // Bloqueado mientras se consulta el equipo, para que un
+                // segundo escaneo no pise al primero.
+                label: _isLoading
+                    ? 'Consultando equipo'
+                    : 'Abrir cámara y escanear QR',
+                icon: Icons.camera_alt_rounded,
+                busy: _isLoading,
+                onPressed: _openCameraScanner,
               ),
-              onPressed: _isLoading ? null : _fetchTeamByQr,
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.search_rounded),
-              label: const Text('Consultar equipo por QR'),
             ),
         ],
       ),
@@ -633,86 +467,75 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     key: const ValueKey('team-details'),
     padding: const EdgeInsets.all(20),
     children: [
-      Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 26,
-              backgroundColor: Color(0xFFE4F6F3),
-              child: Icon(Icons.groups_rounded, color: _Colors.teal, size: 28),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _teamName,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: _Colors.navy,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${_participants.length} participantes confirmados',
-                    style: const TextStyle(color: _Colors.muted),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.verified_rounded, color: _Colors.success),
-          ],
-        ),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Expanded(child: SectionLabel('02', 'Equipo confirmado')),
+          DotCircle(cells: 11, dot: 3, gap: 4, color: Nothing.ok, hollow: true),
+        ],
       ),
       const SizedBox(height: 18),
+      Text(_teamName, style: Nothing.display(36)),
+      const SizedBox(height: 24),
       Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Text(
-            'Tarjetas de participantes',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: _Colors.navy,
-            ),
+          DisplayNumber(
+            value: '${_participants.length}'.padLeft(2, '0'),
+            caption: 'Integrantes',
+            size: 46,
           ),
-          TextButton.icon(
+          const SizedBox(width: 36),
+          DisplayNumber(
+            value: '${_writtenParticipantIds.length}'.padLeft(2, '0'),
+            caption: 'Credenciales',
+            size: 46,
+            color: _writtenParticipantIds.length >= _participants.length
+                ? Nothing.ok
+                : Nothing.ink,
+          ),
+          const Spacer(),
+          TextButton(
             onPressed: () => setState(() => _teamLoaded = false),
-            icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-            label: const Text('Cambiar QR'),
+            child: const Text(
+              'CAMBIAR QR',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.4,
+                color: Nothing.ink,
+              ),
+            ),
           ),
         ],
       ),
-      const SizedBox(height: 6),
+      const SizedBox(height: 28),
       const Text(
         'Escribe una tarjeta individual por cada integrante.',
-        style: TextStyle(color: _Colors.muted),
+        style: Nothing.body,
       ),
-      const SizedBox(height: 12),
+      const SizedBox(height: 20),
+      const Hairline(),
       ..._participants.indexed.map((entry) {
         final p = entry.$2;
         final isWritten =
             _writtenParticipantIds.contains(p.id) ||
             _writtenParticipantIds.contains(entry.$1.toString());
         return _ParticipantRow(
+          index: '${entry.$1 + 1}'.padLeft(2, '0'),
           name: p.fullName,
           written: isWritten,
           nfcToken: p.nfcToken,
           onWrite: () => _writeCard(p, entry.$1),
         );
       }),
-      const SizedBox(height: 18),
+      const SizedBox(height: 24),
       if (_writtenParticipantIds.length >= _participants.length &&
           _participants.isNotEmpty)
-        const _SuccessBanner(
-          message: 'Equipo registrado y credenciales activas',
+        const Notice(
+          tone: NoticeTone.ok,
+          label: 'Equipo registrado',
+          message: 'Todas las credenciales del equipo están activas.',
         ),
     ],
   );
@@ -737,7 +560,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.nfc_rounded, size: 52, color: _Colors.teal),
+              const Icon(Icons.nfc_rounded, size: 52, color: Nothing.ink),
               const SizedBox(height: 12),
               Text(
                 'Escribir tarjeta de ${participant.fullName}',
@@ -753,7 +576,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     ? 'Acerca una tarjeta NFC vacía al teléfono.'
                     : 'Se emitirá la credencial y después deberás acercar una tarjeta NFC escribible.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: _Colors.muted),
+                style: const TextStyle(color: Nothing.muted),
               ),
               if (localError != null) ...[
                 const SizedBox(height: 14),
@@ -838,7 +661,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                                   content: Text(
                                     'Tarjeta NFC escrita y vinculada correctamente.',
                                   ),
-                                  backgroundColor: _Colors.success,
+                                  backgroundColor: Nothing.ok,
                                   duration: Duration(seconds: 4),
                                 ),
                               );
@@ -898,18 +721,21 @@ class EventsScreen extends StatelessWidget {
       'Check-in',
       'Registra la llegada del participante.',
       Icons.login_rounded,
+      glyph: DotGlyphs.checkin,
       code: 'checkin',
     ),
     _EventOption(
       'Desayuno',
       'Valida una entrada al desayuno.',
       Icons.breakfast_dining_outlined,
+      glyph: DotGlyphs.breakfast,
       code: 'desayuno',
     ),
     _EventOption(
       'Comida',
       'Valida una entrada a la comida.',
       Icons.restaurant_outlined,
+      glyph: DotGlyphs.lunch,
       code: 'comida',
     ),
   ];
@@ -922,37 +748,55 @@ class EventsScreen extends StatelessWidget {
     ),
     body: SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
         child: ListView(
           children: [
-            const Text(
-              'Selecciona un evento',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: _Colors.navy,
+            Reveal(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Expanded(child: SectionLabel('02', 'Accesos')),
+                  DotCircle(cells: 11, dot: 3, gap: 4, color: Nothing.border),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            const Text(
-              'Cada opción abre el lector NFC para ese momento.',
-              style: TextStyle(fontSize: 16, color: _Colors.muted),
+            const SizedBox(height: 20),
+            Reveal(
+              step: 1,
+              child: Text('SELECCIONA\nUN EVENTO', style: Nothing.display(40)),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 14),
+            const Reveal(
+              step: 2,
+              child: Text(
+                'Cada opción abre el lector NFC para ese momento.',
+                style: Nothing.body,
+              ),
+            ),
+            const SizedBox(height: 32),
+            const RevealLine(step: 3),
             ..._events.indexed.expand(
               (entry) => [
-                _ActionCard(
-                  title: entry.$2.name,
-                  description: entry.$2.description,
-                  icon: entry.$2.icon,
-                  primary: entry.$1 == 0,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => EventScanScreen(event: entry.$2),
+                Reveal(
+                  step: 3 + entry.$1,
+                  child: _ActionCard(
+                    index: '0${entry.$1 + 1}',
+                    title: entry.$2.name,
+                    description: entry.$2.description,
+                    glyph: entry.$2.glyph,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => EventScanScreen(event: entry.$2),
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                RevealLine(step: 3 + entry.$1),
               ],
             ),
           ],
@@ -1137,219 +981,170 @@ class _EventScanScreenState extends State<EventScanScreen>
     appBar: AppBar(
       title: Text(widget.event.name),
       backgroundColor: Colors.transparent,
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.tune_rounded, color: _Colors.navy),
-          tooltip: 'Configuración de conexión',
-          onPressed: () async {
-            await showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              showDragHandle: true,
-              builder: (sheetContext) => const _BackendConfigModal(),
-            );
-            setState(() {});
-          },
-        ),
-      ],
+      actions: [_TopBarActions()],
     ),
-    body: Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Lectura NFC · ${widget.event.name}',
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w800,
-              color: _Colors.navy,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Acerca la tarjeta del participante al teléfono para validarla.',
-            style: TextStyle(color: _Colors.muted, fontSize: 16),
-          ),
-          const SizedBox(height: 20),
-          if (!BackendConfig.isSimulation) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: TextField(
-                controller: _tokenInputController,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Última credencial leída',
-                  hintText: 'Se completa al leer la tarjeta',
-                  prefixIcon: const Icon(Icons.nfc_rounded),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Reveal(child: SectionLabel('01', 'Lectura NFC')),
+            const SizedBox(height: 18),
+            Reveal(
+              step: 1,
+              child: Text(
+                widget.event.name.toUpperCase(),
+                style: Nothing.display(42),
               ),
             ),
-          ],
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: _participant == null ? _readerState() : _participantCard(),
+            const SizedBox(height: 12),
+            const Reveal(
+              step: 2,
+              child: Text(
+                'Acerca la tarjeta del participante al teléfono.',
+                style: Nothing.body,
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            style: _primaryButtonStyle,
-            onPressed: _isWaitingForCard
-                ? _cancelScan
-                : (_isLoading ? null : _handleScan),
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.nfc_rounded),
-            label: Text(
-              _isWaitingForCard
+            if (!BackendConfig.isSimulation) ...[
+              const SizedBox(height: 26),
+              Reveal(
+                step: 2,
+                child: UnderlineField(
+                  label: 'Última credencial',
+                  controller: _tokenInputController,
+                  readOnly: true,
+                ),
+              ),
+            ],
+            const SizedBox(height: 28),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: Motion.base,
+                child: _participant == null
+                    ? _readerState()
+                    : _participantCard(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            PrimaryAction(
+              label: _isWaitingForCard
                   ? 'Cancelar lectura'
                   : BackendConfig.isSimulation
                   ? 'Simular lectura NFC'
                   : 'Leer tarjeta NFC',
+              busy: _isLoading && !_isWaitingForCard,
+              icon: Icons.nfc_rounded,
+              onPressed: _isWaitingForCard ? _cancelScan : _handleScan,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ),
   );
 
-  Widget _readerState() => Container(
+  /// Espera de tarjeta. El barrido en bucle comunica «esto sigue vivo» sin
+  /// ocupar texto ni robar atención, que es justo para lo que existe.
+  Widget _readerState() => Column(
     key: const ValueKey('reader'),
-    width: double.infinity,
-    padding: const EdgeInsets.all(28),
-    decoration: BoxDecoration(
-      color: const Color(0xFFE9FAF7),
-      borderRadius: BorderRadius.circular(28),
-      border: Border.all(color: const Color(0xFFB8EAE1)),
-    ),
-    child: const Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.nfc_rounded, size: 88, color: _Colors.teal),
-        SizedBox(height: 22),
-        Text(
-          'Listo para leer tarjeta',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: _Colors.navy,
-          ),
-        ),
-        SizedBox(height: 8),
-        Text(
-          'Mantén una sola tarjeta cerca del teléfono.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: _Colors.muted),
-        ),
-      ],
-    ),
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      // El bucle solo corre mientras se espera tarjeta de verdad. En reposo la
+      // matriz va quieta: animar sin motivo gasta batería, distrae a quien
+      // está leyendo y deja la pantalla sin asentarse nunca.
+      if (_isWaitingForCard)
+        AnimatedDotMatrix(
+          widget.event.glyph,
+          motion: DotMotion.sweep,
+          dot: 9,
+          gap: 5,
+          color: Nothing.ink,
+        )
+      else
+        DotMatrix(widget.event.glyph, dot: 9, gap: 5, color: Nothing.ink),
+      const SizedBox(height: 32),
+      Text(
+        _isWaitingForCard ? 'ESPERANDO\nTARJETA' : 'LISTO PARA\nLEER',
+        style: Nothing.display(34),
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        'Mantén una sola tarjeta cerca del teléfono.',
+        style: Nothing.body,
+      ),
+    ],
   );
 
+  /// Resultado de la lectura.
+  ///
+  /// El código de respuesta es el protagonista: en la puerta se decide por él,
+  /// y en cifra grande se lee de un vistazo desde lejos.
   Widget _participantCard() {
     final participant = _participant!;
+    final code = _isDuplicate ? '409' : 'OK';
+    final caption = _isDuplicate ? 'Duplicado' : 'Acceso válido';
+    final tone = _isDuplicate ? Nothing.accent : Nothing.ok;
+
     return ListView(
       key: const ValueKey('participant'),
+      padding: EdgeInsets.zero,
       children: [
-        if (_isDuplicate)
-          _WarningBanner(
-            message:
-                'Acceso duplicado: registrado previamente a las ${_duplicateTimestamp ?? ""}',
-          )
-        else
-          const _SuccessBanner(message: 'Acceso registrado correctamente'),
-        const SizedBox(height: 18),
-        Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Column(
-            children: [
-              const CircleAvatar(
-                radius: 42,
-                backgroundColor: Color(0xFFE4F6F3),
-                child: Icon(
-                  Icons.person_rounded,
-                  size: 46,
-                  color: _Colors.teal,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                participant.name,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
-                  color: _Colors.navy,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                participant.team,
-                style: const TextStyle(fontSize: 16, color: _Colors.muted),
-              ),
-              const SizedBox(height: 24),
-              const Divider(),
-              _InfoRow(label: 'Evento', value: widget.event.name),
-              _InfoRow(label: 'Credencial', value: participant.credential),
-              _InfoRow(
-                label: 'Estado',
-                value: _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
-                success: !_isDuplicate,
-              ),
-            ],
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            DotText(code, dot: 7, gap: 4, color: tone),
+            const SizedBox(width: 18),
+            Expanded(child: Text(caption.toUpperCase(), style: Nothing.label)),
+            AnimatedDotMatrix(
+              _isDuplicate ? DotGlyphs.cross : DotGlyphs.check,
+              motion: DotMotion.reveal,
+              dot: 3,
+              gap: 1.5,
+              color: tone,
+            ),
+          ],
         ),
-        const SizedBox(height: 16),
-        OutlinedButton.icon(
+        const SizedBox(height: 24),
+        // El nombre no va en mayúsculas: es el dato que más rápido hay que
+        // leer y las versales lo empeoran.
+        Text(participant.name, style: Nothing.display(32)),
+        const SizedBox(height: 6),
+        Text(participant.team, style: Nothing.body),
+        const SizedBox(height: 24),
+        const Hairline(),
+        MetaRow('Evento', widget.event.name),
+        const Hairline(),
+        MetaRow('Credencial', participant.credential),
+        const Hairline(),
+        MetaRow(
+          'Estado',
+          // El literal 'Acceso válido' lo comprueba widget_test.dart.
+          _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
+          valueColor: tone,
+        ),
+        const Hairline(),
+        if (_isDuplicate && _duplicateTimestamp != null) ...[
+          const SizedBox(height: 20),
+          Notice(
+            label: 'Registro previo',
+            message: 'Registrado previamente a las $_duplicateTimestamp',
+          ),
+        ],
+        const SizedBox(height: 24),
+        SecondaryAction(
+          label: 'Leer otra tarjeta',
+          icon: Icons.nfc_rounded,
           onPressed: () => setState(() => _participant = null),
-          icon: const Icon(Icons.nfc_rounded),
-          label: const Text('Leer otra tarjeta'),
         ),
       ],
     );
   }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({
-    required this.label,
-    required this.value,
-    this.success = false,
-  });
-  final String label;
-  final String value;
-  final bool success;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 10),
-    child: Row(
-      children: [
-        Expanded(
-          child: Text(label, style: const TextStyle(color: _Colors.muted)),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: success ? _Colors.success : _Colors.navy,
-          ),
-        ),
-      ],
-    ),
-  );
 }
 
 class _EventOption {
@@ -1357,11 +1152,16 @@ class _EventOption {
     this.name,
     this.description,
     this.icon, {
+    required this.glyph,
     this.code = 'checkin',
   });
   final String name;
   final String description;
   final IconData icon;
+
+  /// Glifo de puntos propio. Cada acceso se reconoce por su dibujo antes que
+  /// por su nombre: en la puerta se elige de un vistazo.
+  final List<String> glyph;
   final String code;
 }
 
@@ -1372,62 +1172,57 @@ class _ScannedParticipant {
   final String credential;
 }
 
+/// Fila de operación. Sin tarjeta: número grande, glifo de puntos y separador,
+/// igual que las filas de evento. El área pulsable es alta porque se opera de
+/// pie y con prisa.
 class _ActionCard extends StatelessWidget {
   const _ActionCard({
+    required this.index,
     required this.title,
     required this.description,
-    required this.icon,
+    required this.glyph,
     required this.onTap,
-    this.primary = false,
   });
+
+  final String index;
   final String title;
   final String description;
-  final IconData icon;
+  final List<String> glyph;
   final VoidCallback onTap;
-  final bool primary;
+
   @override
   Widget build(BuildContext context) => InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(24),
-    child: Ink(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: primary ? _Colors.teal : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-      ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 22),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 44, color: primary ? Colors.white : _Colors.navy),
-          const SizedBox(width: 18),
+          SizedBox(width: 54, child: Text(index, style: Nothing.display(34))),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, right: 18),
+            child: DotMatrix(glyph, dot: 3, gap: 1.5, color: Nothing.ink),
+          ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontWeight: FontWeight.w800,
-                    color: primary ? Colors.white : _Colors.navy,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 15,
-                    height: 1.35,
-                    color: primary
-                        ? Colors.white.withValues(alpha: .9)
-                        : _Colors.muted,
-                  ),
-                ),
+                Text(title.toUpperCase(), style: Nothing.display(24)),
+                const SizedBox(height: 8),
+                Text(description, style: Nothing.body),
               ],
             ),
           ),
-          Icon(
-            Icons.arrow_forward_ios_rounded,
-            color: primary ? Colors.white : _Colors.navy,
+          const Padding(
+            padding: EdgeInsets.only(top: 4, left: 8),
+            child: Text(
+              '→',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Nothing.ink,
+              ),
+            ),
           ),
         ],
       ),
@@ -1435,97 +1230,81 @@ class _ActionCard extends StatelessWidget {
   );
 }
 
+/// Integrante del equipo. Fila editorial con separador, sin tarjeta ni avatar:
+/// la sección 15 de DESIGN.md desaconseja las fotos de perfil circulares.
 class _ParticipantRow extends StatelessWidget {
   const _ParticipantRow({
+    required this.index,
     required this.name,
     required this.written,
     this.nfcToken,
     required this.onWrite,
   });
+
+  final String index;
   final String name;
   final bool written;
   final String? nfcToken;
   final VoidCallback onWrite;
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(top: 10),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-    ),
-    child: Row(
-      children: [
-        const CircleAvatar(
-          backgroundColor: Color(0xFFEAF0F5),
-          child: Icon(Icons.person_outline, color: _Colors.navy),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: _Colors.navy,
-                ),
-              ),
-              Text(
-                // `written` sale de `nfc_activa` del backend: significa que la
-                // credencial está emitida, no que se haya escrito una tarjeta
-                // física en esta sesión.
-                written ? 'Credencial activa' : 'Pendiente de escribir',
-                style: TextStyle(
-                  color: written ? _Colors.success : _Colors.muted,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (written) ...[
-          const Icon(Icons.check_circle_rounded, color: _Colors.success),
-          const SizedBox(width: 4),
-        ],
-        // El botón nunca se oculta: si alguien pierde la tarjeta hay que poder
-        // reescribirla sin tener que volver a escanear el QR del equipo.
-        TextButton(
-          onPressed: onWrite,
-          child: Text(written ? 'Reescribir' : 'Escribir NFC'),
-        ),
-      ],
-    ),
-  );
-}
 
-class _SuccessBanner extends StatelessWidget {
-  const _SuccessBanner({required this.message});
-  final String message;
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFDDF8EE),
-      borderRadius: BorderRadius.circular(14),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.check_circle_rounded, color: _Colors.success),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF047857),
+  Widget build(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 40,
+              child: Text(
+                index,
+                style: Nothing.meta.copyWith(color: Nothing.muted),
+              ),
             ),
-          ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Nothing.ink,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    // `written` sale de `nfc_activa` del backend: significa
+                    // que la credencial está emitida, no que se haya escrito
+                    // una tarjeta física en esta sesión.
+                    written ? 'Credencial activa' : 'Pendiente de escribir',
+                    style: Nothing.label.copyWith(
+                      color: written ? Nothing.ok : Nothing.muted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // El botón nunca se oculta: si alguien pierde la tarjeta hay que
+            // poder reescribirla sin volver a escanear el QR del equipo.
+            TextButton(
+              onPressed: onWrite,
+              child: Text(
+                written ? 'REESCRIBIR' : 'ESCRIBIR NFC',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: Nothing.ink,
+                ),
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
+      ),
+      const Hairline(),
+    ],
   );
 }
 
@@ -1534,179 +1313,16 @@ class _Participant {
   final String name;
 }
 
-class _Colors {
-  static const navy = Color(0xFF102A43);
-  static const teal = Color(0xFF0FA99A);
-  static const success = Color(0xFF059669);
-  static const muted = Color(0xFF627D98);
-}
-
+/// Estilo de los botones del sheet de escritura. El resto de la app usa
+/// PrimaryAction; aquí se conserva el estilo suelto porque los botones viven
+/// dentro de un StatefulBuilder con su propio estado de envío.
 final _primaryButtonStyle = FilledButton.styleFrom(
+  backgroundColor: Nothing.ink,
+  foregroundColor: Colors.white,
+  elevation: 0,
+  shape: const RoundedRectangleBorder(
+    borderRadius: BorderRadius.all(Radius.circular(4)),
+  ),
   minimumSize: const Size.fromHeight(56),
   textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
 );
-
-class _WarningBanner extends StatelessWidget {
-  const _WarningBanner({required this.message});
-  final String message;
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFEF3C7),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(color: const Color(0xFFFDE68A)),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF92400E),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _BackendConfigModal extends StatefulWidget {
-  const _BackendConfigModal();
-
-  @override
-  State<_BackendConfigModal> createState() => _BackendConfigModalState();
-}
-
-class _BackendConfigModalState extends State<_BackendConfigModal> {
-  late BackendMode _selectedMode;
-  late TextEditingController _tunnelController;
-  late TextEditingController _tokenController;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedMode = BackendConfig.mode;
-    _tunnelController = TextEditingController(
-      text: BackendConfig.tunnelBaseUrl,
-    );
-    _tokenController = TextEditingController(
-      text: BackendConfig.staffAuthToken,
-    );
-  }
-
-  @override
-  void dispose() {
-    _tunnelController.dispose();
-    _tokenController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        24,
-        8,
-        24,
-        MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Configuración de Conexión',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: _Colors.navy,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Selecciona el modo de comunicación con Supabase Edge Functions:',
-              style: TextStyle(color: _Colors.muted),
-            ),
-            const SizedBox(height: 14),
-            RadioListTile<BackendMode>(
-              title: const Text('Túnel HTTPS (Cloudflare / localtunnel)'),
-              subtitle: const Text(
-                'Recomendado: Cloudflare Tunnel o localtunnel',
-              ),
-              value: BackendMode.tunnel,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            if (_selectedMode == BackendMode.tunnel)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
-                child: TextField(
-                  controller: _tunnelController,
-                  decoration: const InputDecoration(
-                    labelText: 'URL del túnel',
-                    hintText: 'https://xyz.trycloudflare.com/functions/v1',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-            RadioListTile<BackendMode>(
-              title: const Text('Red Local Wi-Fi (IP de la Mac)'),
-              subtitle: const Text('http://10.0.40.78:54321/functions/v1'),
-              value: BackendMode.localNetwork,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            RadioListTile<BackendMode>(
-              title: const Text('Supabase Cloud (Remoto)'),
-              subtitle: const Text('uopfoekxkluotowilzaa.supabase.co'),
-              value: BackendMode.cloud,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            RadioListTile<BackendMode>(
-              title: const Text('Modo Simulación (Offline)'),
-              subtitle: const Text(
-                'Prueba de interfaz sin conexión al servidor',
-              ),
-              value: BackendMode.simulation,
-              groupValue: _selectedMode,
-              onChanged: (val) => setState(() => _selectedMode = val!),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tokenController,
-              decoration: const InputDecoration(
-                labelText: 'JWT Token de Staff (Opcional si --no-verify-jwt)',
-                hintText: 'Pega el token Bearer para autenticación',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 20),
-            FilledButton(
-              style: _primaryButtonStyle,
-              onPressed: () {
-                setState(() {
-                  BackendConfig.mode = _selectedMode;
-                  BackendConfig.tunnelBaseUrl = _tunnelController.text.trim();
-                  BackendConfig.staffAuthToken = _tokenController.text.trim();
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Modo activo: ${_selectedMode.name}')),
-                );
-              },
-              child: const Text('Guardar configuración'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
