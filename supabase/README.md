@@ -3,7 +3,7 @@
 Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), implementado con **Supabase Edge Functions** en **TypeScript estricto (sin `any`)**.
 
 - **Proyecto Supabase Ref**: `uopfoekxkluotowilzaa`
-- **Tablas involucradas**: `public.equipos`, `public.integrantes`, `public.staff`, `public.perfiles`
+- **Tablas involucradas**: `public.equipos`, `public.integrantes`, `public.staff`, `public.perfiles`, `public.sitec_asistentes` (SITEC)
 
 ---
 
@@ -14,6 +14,7 @@ Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), 
 | **`staff-team-from-qr`** | `POST` | `/functions/v1/staff-team-from-qr` | Busca equipo por `qr_token` y devuelve sus integrantes con datos operativos. Nunca expone datos sensibles. |
 | **`staff-issue-nfc`** | `POST` | `/functions/v1/staff-issue-nfc` | Asigna o reactiva el `nfc_token` de un integrante y genera el payload exacto `staffapp:nfc:<token>`. |
 | **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin`, `desayuno` y `comida` atómicamente evitando duplicados (HTTP 409). |
+| **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida` y `viernes_comida`. No toca las tablas del hackathon. |
 
 ---
 
@@ -28,7 +29,7 @@ Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), 
 3. **Privacidad Estricta (Whitelisting)**:
    - Los datos personales sensibles (`alergias`, `telefono`, `email`, `contacto_emergencia`, `contacto_emergencia_telefono`, etc.) **nunca** son devueltos al cliente móvil ni escritos en la tarjeta NFC física.
 4. **Prevención Atómica de Duplicados**:
-   - `staff-scan-nfc` ejecuta una actualización condicional en PostgreSQL (`.is(timeCol, null)`) garantizando que solicitudes concurrentes no generen registros dobles. Si ya existe un registro previo, devuelve `HTTP 409 Conflict` con la fecha y hora original.
+   - `staff-scan-nfc` y `staff-sitec-scan-nfc` ejecutan una actualización condicional en PostgreSQL (`.is(timeCol, null)`) garantizando que solicitudes concurrentes no generen registros dobles. Si ya existe un registro previo, devuelven `HTTP 409 Conflict` con la fecha y hora original.
 
 ---
 
@@ -61,10 +62,11 @@ SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
 > **Nota**: No despliegues a producción sin confirmación explícita del equipo.
 
 ```bash
-# Desplegar las tres funciones al proyecto uopfoekxkluotowilzaa
+# Desplegar las cuatro funciones al proyecto uopfoekxkluotowilzaa
 npx supabase functions deploy staff-team-from-qr --project-ref uopfoekxkluotowilzaa
 npx supabase functions deploy staff-issue-nfc --project-ref uopfoekxkluotowilzaa
 npx supabase functions deploy staff-scan-nfc --project-ref uopfoekxkluotowilzaa
+npx supabase functions deploy staff-sitec-scan-nfc --project-ref uopfoekxkluotowilzaa
 
 # O desplegar todas simultáneamente:
 npx supabase functions deploy --project-ref uopfoekxkluotowilzaa
@@ -81,7 +83,7 @@ npx supabase secrets set --project-ref uopfoekxkluotowilzaa \
 
 ## Ejecutar Pruebas y Verificación de Tipos
 
-El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 19 pruebas de integración/unitarias:
+El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 31 pruebas de integración/unitarias:
 
 ```bash
 # 1. Verificación de tipos estricta (sin 'any', TypeScript estricto)

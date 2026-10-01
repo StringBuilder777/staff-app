@@ -1,4 +1,8 @@
-import type { OperationalEquipo, OperationalIntegrante } from './types.ts';
+import type {
+  OperationalEquipo,
+  OperationalIntegrante,
+  OperationalSitecAsistente,
+} from './types.ts';
 
 /**
  * Sanitizes integrante data to return ONLY operational information.
@@ -33,5 +37,24 @@ export function sanitizeEquipo(row: Record<string, unknown>): OperationalEquipo 
     id: typeof row.id === 'string' ? row.id : String(row.id ?? ''),
     nombre: typeof row.nombre === 'string' ? row.nombre : '',
     qr_token: typeof row.qr_token === 'string' ? row.qr_token : null,
+  };
+}
+
+/**
+ * Datos operativos de un asistente de SITEC. Lista blanca estricta: lo que se
+ * cargue más adelante en la tabla (correo, teléfono...) nunca sale hacia la
+ * app, y el token NFC tampoco, porque al lector no le hace falta.
+ */
+export function sanitizeSitecAsistente(row: Record<string, unknown>): OperationalSitecAsistente {
+  return {
+    id: typeof row.id === 'string' ? row.id : String(row.id ?? ''),
+    nombre: typeof row.nombre === 'string' ? row.nombre : '',
+    apellidos: typeof row.apellidos === 'string' ? row.apellidos : null,
+    jueves_entrada_en: typeof row.jueves_entrada_en === 'string' ? row.jueves_entrada_en : null,
+    jueves_comida_en: typeof row.jueves_comida_en === 'string' ? row.jueves_comida_en : null,
+    jueves_salida_en: typeof row.jueves_salida_en === 'string' ? row.jueves_salida_en : null,
+    viernes_entrada_en: typeof row.viernes_entrada_en === 'string' ? row.viernes_entrada_en : null,
+    viernes_salida_en: typeof row.viernes_salida_en === 'string' ? row.viernes_salida_en : null,
+    viernes_comida_en: typeof row.viernes_comida_en === 'string' ? row.viernes_comida_en : null,
   };
 }

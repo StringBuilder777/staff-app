@@ -94,6 +94,65 @@ export interface ScanNfcDuplicateResponse {
   equipo: OperationalEquipo | null;
 }
 
+/**
+ * Puntos de acceso de SITEC, `<día>_<punto>`. Cada uno es un par de columnas
+ * en sitec_asistentes: `<punto>_en` y `<punto>_registrado_por`.
+ */
+export type SitecAccessType =
+  | 'jueves_entrada'
+  | 'jueves_comida'
+  | 'jueves_salida'
+  | 'viernes_entrada'
+  | 'viernes_salida'
+  | 'viernes_comida';
+
+export const VALID_SITEC_ACCESS_TYPES: readonly SitecAccessType[] = [
+  'jueves_entrada',
+  'jueves_comida',
+  'jueves_salida',
+  'viernes_entrada',
+  'viernes_salida',
+  'viernes_comida',
+] as const;
+
+export function isValidSitecAccessType(value: unknown): value is SitecAccessType {
+  return (
+    typeof value === 'string' && (VALID_SITEC_ACCESS_TYPES as readonly string[]).includes(value)
+  );
+}
+
+export interface OperationalSitecAsistente {
+  id: string;
+  nombre: string;
+  apellidos: string | null;
+  jueves_entrada_en: string | null;
+  jueves_comida_en: string | null;
+  jueves_salida_en: string | null;
+  viernes_entrada_en: string | null;
+  viernes_salida_en: string | null;
+  viernes_comida_en: string | null;
+}
+
+export interface SitecScanNfcRequest {
+  nfcToken: string;
+  accessType: SitecAccessType;
+}
+
+export interface SitecScanNfcAcceptedResponse {
+  status: 'accepted';
+  accessType: SitecAccessType;
+  registeredAt: string;
+  asistente: OperationalSitecAsistente;
+}
+
+export interface SitecScanNfcDuplicateResponse {
+  status: 'duplicate';
+  error: string;
+  accessType: SitecAccessType;
+  previouslyRegisteredAt: string;
+  asistente: OperationalSitecAsistente;
+}
+
 export interface ApiErrorResponse {
   error: string;
   details?: unknown;
