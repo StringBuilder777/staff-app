@@ -42,6 +42,7 @@ class StaffApp extends StatelessWidget {
 /// Raíz de la app una vez resuelto el acceso.
 const _eventSelection = EventSelectionScreen(
   hackathon: HomeScreen(),
+  sitec: SitecScreen(),
   actions: [_TopBarActions()],
 );
 
@@ -806,6 +807,281 @@ class EventsScreen extends StatelessWidget {
   );
 }
 
+/// Inicio de SITEC: el registro de asistentes y los dos días del evento.
+///
+/// Sigue la forma del inicio del hackathon, pero los accesos se agrupan por
+/// día: el staff elige primero la jornada y así no valida la comida del jueves
+/// en el punto del viernes.
+class SitecScreen extends StatelessWidget {
+  const SitecScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      actions: const [_TopBarActions()],
+    ),
+    body: SafeArea(
+      // Lista y no columna: con tres filas, en un móvil pequeño la columna se
+      // quedaría sin alto y se desbordaría.
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
+        children: [
+          const Reveal(child: SectionLabel('02', 'SITEC')),
+          const SizedBox(height: 20),
+          Reveal(step: 1, child: Text('INICIO', style: Nothing.display(46))),
+          const SizedBox(height: 14),
+          const Reveal(
+            step: 2,
+            child: Text(
+              'Elige el día y después el punto de acceso.',
+              style: Nothing.body,
+            ),
+          ),
+          const SizedBox(height: 32),
+          const RevealLine(step: 3),
+          Reveal(
+            step: 3,
+            child: _ActionCard(
+              index: '01',
+              title: 'Registro',
+              description: 'Pendiente: alta de asistentes y sus tarjetas NFC.',
+              glyph: DotGlyphs.person,
+              enabled: false,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const _SitecRegistrationScreen(),
+                ),
+              ),
+            ),
+          ),
+          const RevealLine(step: 3),
+          ..._sitecDays.indexed.expand((entry) {
+            final index = '0${entry.$1 + 2}';
+            return [
+              Reveal(
+                step: 4 + entry.$1,
+                child: _ActionCard(
+                  index: index,
+                  title: entry.$2.name,
+                  description: entry.$2.summary,
+                  glyph: entry.$2.glyph,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          _SitecDayScreen(day: entry.$2, index: index),
+                    ),
+                  ),
+                ),
+              ),
+              RevealLine(step: 4 + entry.$1),
+            ];
+          }),
+          const SizedBox(height: 36),
+          const Reveal(
+            step: 5,
+            child: DotField(columns: 16, rows: 3, dot: 3, gap: 8),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Puntos de acceso de un día de SITEC. Cada punto abre el lector NFC.
+class _SitecDayScreen extends StatelessWidget {
+  const _SitecDayScreen({required this.day, required this.index});
+
+  final _SitecDay day;
+
+  /// Número del día en el inicio de SITEC: la etiqueta repite el de la fila
+  /// que se pulsó.
+  final String index;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(day.name), backgroundColor: Colors.transparent),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Nothing.gutter,
+          8,
+          Nothing.gutter,
+          Nothing.gutter,
+        ),
+        child: ListView(
+          children: [
+            Reveal(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: SectionLabel(index, 'SITEC · Accesos')),
+                  DotMatrix(day.glyph, dot: 3, gap: 1.5, color: Nothing.border),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Reveal(
+              step: 1,
+              child: Text(day.name.toUpperCase(), style: Nothing.display(46)),
+            ),
+            const SizedBox(height: 14),
+            const Reveal(
+              step: 2,
+              child: Text(
+                'Cada punto abre el lector NFC para ese momento del día.',
+                style: Nothing.body,
+              ),
+            ),
+            const SizedBox(height: 32),
+            const RevealLine(step: 3),
+            ...day.points.indexed.expand(
+              (entry) => [
+                Reveal(
+                  step: 3 + entry.$1,
+                  child: _ActionCard(
+                    index: '0${entry.$1 + 1}',
+                    title: entry.$2.name,
+                    description: entry.$2.description,
+                    glyph: entry.$2.glyph,
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => EventScanScreen(event: entry.$2),
+                      ),
+                    ),
+                  ),
+                ),
+                RevealLine(step: 3 + entry.$1),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Registro de SITEC, todavía por definir: los asistentes aún no están
+/// cargados. La fila existe para que el staff vea qué falta y por qué.
+class _SitecRegistrationScreen extends StatelessWidget {
+  const _SitecRegistrationScreen();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: const Text('Registro'),
+      backgroundColor: Colors.transparent,
+    ),
+    body: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(Nothing.gutter),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SectionLabel('01', 'Registro SITEC'),
+            const SizedBox(height: 28),
+            const DotMatrix(
+              DotGlyphs.person,
+              dot: 7,
+              gap: 4,
+              color: Nothing.border,
+            ),
+            const SizedBox(height: 28),
+            Text('TODAVÍA\nNO ESTÁ\nLISTO', style: Nothing.display(40)),
+            const SizedBox(height: 20),
+            const Text(
+              'El alta de asistentes y la escritura de sus tarjetas NFC se '
+              'habilitarán más adelante.',
+              style: Nothing.body,
+            ),
+            const Spacer(),
+            SecondaryAction(
+              label: 'Volver a SITEC',
+              icon: Icons.arrow_back_rounded,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+/// Día de SITEC con sus puntos de acceso.
+class _SitecDay {
+  const _SitecDay(this.name, this.summary, this.glyph, this.points);
+  final String name;
+  final String summary;
+  final List<String> glyph;
+  final List<_EventOption> points;
+}
+
+/// Puntos de acceso de SITEC, en el orden que pasó la organización para cada
+/// día: no es el mismo el jueves que el viernes.
+///
+/// Cada `code` es un par de columnas en sitec_asistentes (`<code>_en` y
+/// `<code>_registrado_por`) y lo valida staff-sitec-scan-nfc.
+const _sitecDays = [
+  _SitecDay('Jueves', 'Entrada, comida y salida.', DotGlyphs.thursday, [
+    _EventOption(
+      'Entrada',
+      'Registra la llegada del asistente.',
+      Icons.login_rounded,
+      glyph: DotGlyphs.checkin,
+      code: 'jueves_entrada',
+      sitecDay: 'Jueves',
+    ),
+    _EventOption(
+      'Comida',
+      'Valida una entrada a la comida.',
+      Icons.restaurant_outlined,
+      glyph: DotGlyphs.lunch,
+      code: 'jueves_comida',
+      sitecDay: 'Jueves',
+    ),
+    _EventOption(
+      'Salida',
+      'Registra la salida del asistente.',
+      Icons.logout_rounded,
+      glyph: DotGlyphs.checkout,
+      code: 'jueves_salida',
+      sitecDay: 'Jueves',
+    ),
+  ]),
+  _SitecDay('Viernes', 'Entrada, salida y comida.', DotGlyphs.friday, [
+    _EventOption(
+      'Entrada',
+      'Registra la llegada del asistente.',
+      Icons.login_rounded,
+      glyph: DotGlyphs.checkin,
+      code: 'viernes_entrada',
+      sitecDay: 'Viernes',
+    ),
+    _EventOption(
+      'Salida',
+      'Registra la salida del asistente.',
+      Icons.logout_rounded,
+      glyph: DotGlyphs.checkout,
+      code: 'viernes_salida',
+      sitecDay: 'Viernes',
+    ),
+    _EventOption(
+      'Comida',
+      'Valida una entrada a la comida.',
+      Icons.restaurant_outlined,
+      glyph: DotGlyphs.lunch,
+      code: 'viernes_comida',
+      sitecDay: 'Viernes',
+    ),
+  ]),
+];
+
 class EventScanScreen extends StatefulWidget {
   const EventScanScreen({super.key, required this.event});
   final _EventOption event;
@@ -877,9 +1153,10 @@ class _EventScanScreenState extends State<EventScanScreen>
   Future<void> _handleScan() async {
     if (BackendConfig.isSimulation) {
       setState(() {
-        _participant = const _ScannedParticipant(
+        _participant = _ScannedParticipant(
           'Ana Torres',
-          'Equipo Boreal',
+          // SITEC no tiene equipos.
+          widget.event.sitecDay == null ? 'Equipo Boreal' : null,
           'PART-00128',
         );
         _isDuplicate = false;
@@ -940,10 +1217,13 @@ class _EventScanScreenState extends State<EventScanScreen>
   Future<void> _processToken(String token) async {
     _tokenInputController.text = token;
     final service = StaffBackendService();
-    final res = await service.scanNfc(
-      nfcToken: token,
-      accessType: widget.event.code,
-    );
+    // SITEC valida contra su propia tabla de asistentes, no contra integrantes.
+    final res = widget.event.sitecDay == null
+        ? await service.scanNfc(nfcToken: token, accessType: widget.event.code)
+        : await service.scanSitecNfc(
+            nfcToken: token,
+            accessType: widget.event.code,
+          );
 
     if (!mounted) return;
 
@@ -952,7 +1232,7 @@ class _EventScanScreenState extends State<EventScanScreen>
       if (res.success) {
         _participant = _ScannedParticipant(
           res.participantName ?? 'Participante',
-          res.teamName ?? 'Equipo',
+          res.teamName,
           res.participantId ?? token,
         );
         _isDuplicate = false;
@@ -960,7 +1240,7 @@ class _EventScanScreenState extends State<EventScanScreen>
       } else if (res.isDuplicate) {
         _participant = _ScannedParticipant(
           res.participantName ?? 'Participante',
-          res.teamName ?? 'Equipo',
+          res.teamName,
           'ACCESO-PREVIO',
         );
         _isDuplicate = true;
@@ -979,7 +1259,7 @@ class _EventScanScreenState extends State<EventScanScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(widget.event.name),
+      title: Text(widget.event.title),
       backgroundColor: Colors.transparent,
       actions: [_TopBarActions()],
     ),
@@ -994,7 +1274,16 @@ class _EventScanScreenState extends State<EventScanScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Reveal(child: SectionLabel('01', 'Lectura NFC')),
+            Reveal(
+              // En SITEC el día va arriba: en la puerta tiene que quedar claro
+              // si se valida el jueves o el viernes.
+              child: SectionLabel(
+                '01',
+                widget.event.sitecDay == null
+                    ? 'Lectura NFC'
+                    : 'SITEC · ${widget.event.sitecDay}',
+              ),
+            ),
             const SizedBox(height: 18),
             Reveal(
               step: 1,
@@ -1004,10 +1293,12 @@ class _EventScanScreenState extends State<EventScanScreen>
               ),
             ),
             const SizedBox(height: 12),
-            const Reveal(
+            Reveal(
               step: 2,
               child: Text(
-                'Acerca la tarjeta del participante al teléfono.',
+                widget.event.sitecDay == null
+                    ? 'Acerca la tarjeta del participante al teléfono.'
+                    : 'Acerca la tarjeta del asistente al teléfono.',
                 style: Nothing.body,
               ),
             ),
@@ -1114,11 +1405,13 @@ class _EventScanScreenState extends State<EventScanScreen>
         // El nombre no va en mayúsculas: es el dato que más rápido hay que
         // leer y las versales lo empeoran.
         Text(participant.name, style: Nothing.display(32)),
-        const SizedBox(height: 6),
-        Text(participant.team, style: Nothing.body),
+        if (participant.team case final team?) ...[
+          const SizedBox(height: 6),
+          Text(team, style: Nothing.body),
+        ],
         const SizedBox(height: 24),
         const Hairline(),
-        MetaRow('Evento', widget.event.name),
+        MetaRow('Evento', widget.event.title),
         const Hairline(),
         MetaRow('Credencial', participant.credential),
         const Hairline(),
@@ -1154,6 +1447,7 @@ class _EventOption {
     this.icon, {
     required this.glyph,
     this.code = 'checkin',
+    this.sitecDay,
   });
   final String name;
   final String description;
@@ -1163,12 +1457,23 @@ class _EventOption {
   /// por su nombre: en la puerta se elige de un vistazo.
   final List<String> glyph;
   final String code;
+
+  /// Día de SITEC al que pertenece el punto; null en los accesos del
+  /// hackathon. Decide también contra qué backend se valida: SITEC tiene su
+  /// propia tabla de asistentes.
+  final String? sitecDay;
+
+  /// Nombre con su día cuando lo tiene: 'Jueves · Entrada'. En SITEC cada
+  /// punto existe en los dos días y solo el día los distingue.
+  String get title => sitecDay == null ? name : '$sitecDay · $name';
 }
 
 class _ScannedParticipant {
   const _ScannedParticipant(this.name, this.team, this.credential);
   final String name;
-  final String team;
+
+  /// Null en SITEC, que no tiene equipos.
+  final String? team;
   final String credential;
 }
 
@@ -1182,6 +1487,7 @@ class _ActionCard extends StatelessWidget {
     required this.description,
     required this.glyph,
     required this.onTap,
+    this.enabled = true,
   });
 
   final String index;
@@ -1190,44 +1496,62 @@ class _ActionCard extends StatelessWidget {
   final List<String> glyph;
   final VoidCallback onTap;
 
+  /// Una operación pendiente se pinta apagada pero sigue siendo pulsable: el
+  /// staff ve que existe y, al entrar, por qué todavía no está lista.
+  final bool enabled;
+
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 22),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(width: 54, child: Text(index, style: Nothing.display(34))),
-          Padding(
-            padding: const EdgeInsets.only(top: 4, right: 18),
-            child: DotMatrix(glyph, dot: 3, gap: 1.5, color: Nothing.ink),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title.toUpperCase(), style: Nothing.display(24)),
-                const SizedBox(height: 8),
-                Text(description, style: Nothing.body),
-              ],
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.only(top: 4, left: 8),
-            child: Text(
-              '→',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: Nothing.ink,
+  Widget build(BuildContext context) {
+    final ink = enabled ? Nothing.ink : Nothing.muted;
+    final mark = enabled ? Nothing.ink : Nothing.border;
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 22),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 54,
+              child: Text(
+                index,
+                style: Nothing.display(34).copyWith(color: ink),
               ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.only(top: 4, right: 18),
+              child: DotMatrix(glyph, dot: 3, gap: 1.5, color: mark),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.toUpperCase(),
+                    style: Nothing.display(24).copyWith(color: ink),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(description, style: Nothing.body),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 8),
+              child: Text(
+                '→',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: mark,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Integrante del equipo. Fila editorial con separador, sin tarjeta ni avatar:

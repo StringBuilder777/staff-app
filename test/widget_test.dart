@@ -11,6 +11,13 @@ Future<void> abrirHackathon(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Arranca la app y entra a SITEC desde la selección de evento.
+Future<void> abrirSitec(WidgetTester tester) async {
+  await tester.pumpWidget(const StaffApp());
+  await tester.tap(find.text('SITEC'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('shows operational entry points', (tester) async {
     // El modo se fija de forma explícita: el valor por defecto de producción es
@@ -77,4 +84,56 @@ void main() {
       BackendConfig.mode = BackendMode.simulation;
     },
   );
+
+  testWidgets('SITEC shows registration and both days', (tester) async {
+    BackendConfig.mode = BackendMode.simulation;
+    await abrirSitec(tester);
+
+    expect(find.text('REGISTRO'), findsOneWidget);
+    expect(find.text('JUEVES'), findsOneWidget);
+    expect(find.text('VIERNES'), findsOneWidget);
+  });
+
+  testWidgets('SITEC days keep their own order of access points', (
+    tester,
+  ) async {
+    BackendConfig.mode = BackendMode.simulation;
+    await abrirSitec(tester);
+
+    double top(String text) => tester.getTopLeft(find.text(text)).dy;
+
+    // El jueves la comida va antes que la salida; el viernes, al revés.
+    await tester.tap(find.text('JUEVES'));
+    await tester.pumpAndSettle();
+    expect(top('ENTRADA'), lessThan(top('COMIDA')));
+    expect(top('COMIDA'), lessThan(top('SALIDA')));
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('VIERNES'));
+    await tester.pumpAndSettle();
+    expect(top('ENTRADA'), lessThan(top('SALIDA')));
+    expect(top('SALIDA'), lessThan(top('COMIDA')));
+  });
+
+  testWidgets('SITEC access point reads NFC without a team', (tester) async {
+    BackendConfig.mode = BackendMode.simulation;
+    await abrirSitec(tester);
+
+    await tester.tap(find.text('JUEVES'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ENTRADA'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('01 / SITEC · JUEVES'), findsOneWidget);
+
+    await tester.tap(find.text('SIMULAR LECTURA NFC'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ana Torres'), findsOneWidget);
+    expect(find.text('Acceso válido'), findsOneWidget);
+    expect(find.text('Equipo Boreal'), findsNothing);
+    // Título de la barra y fila de evento del resultado.
+    expect(find.text('Jueves · Entrada'), findsNWidgets(2));
+  });
 }

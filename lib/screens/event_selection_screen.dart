@@ -13,11 +13,16 @@ class EventSelectionScreen extends StatelessWidget {
   const EventSelectionScreen({
     super.key,
     required this.hackathon,
+    required this.sitec,
     this.actions = const [],
   });
 
-  /// Pantalla del hackathon, que es el flujo ya operativo.
+  /// Pantalla del hackathon: registro de equipos y sus accesos.
   final Widget hackathon;
+
+  /// Pantalla de SITEC: accesos por día. Vive en main.dart junto al lector
+  /// NFC, igual que la del hackathon.
+  final Widget sitec;
 
   /// Acciones de la barra superior (conexión y cerrar sesión), que viven en
   /// main.dart junto al resto del estado de sesión.
@@ -93,12 +98,11 @@ class EventSelectionScreen extends StatelessWidget {
             child: _EventRow(
               index: '02',
               title: 'SITEC',
-              subtitle: 'Pendiente de configurar',
-              glyph: DotGlyphs.cross,
-              enabled: false,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const _SitecScreen()),
-              ),
+              subtitle: 'Accesos de jueves y viernes',
+              glyph: DotGlyphs.nfc,
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute<void>(builder: (_) => sitec)),
             ),
           ),
           const RevealLine(step: 4),
@@ -121,7 +125,6 @@ class _EventRow extends StatelessWidget {
     required this.subtitle,
     required this.glyph,
     required this.onTap,
-    this.enabled = true,
   });
 
   final String index;
@@ -130,67 +133,50 @@ class _EventRow extends StatelessWidget {
   final List<String> glyph;
   final VoidCallback onTap;
 
-  /// Un evento no configurado se pinta apagado pero sigue siendo pulsable: el
-  /// staff debe ver que existe y por qué no está listo, no un botón muerto.
-  final bool enabled;
-
   @override
-  Widget build(BuildContext context) {
-    final ink = enabled ? Nothing.ink : Nothing.muted;
-
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 22),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 54,
-              child: Text(
-                index,
-                style: Nothing.display(34).copyWith(color: ink),
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(vertical: 22),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 54, child: Text(index, style: Nothing.display(34))),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, right: 18),
+            child: AnimatedDotMatrix(
+              glyph,
+              motion: DotMotion.reveal,
+              dot: 3,
+              gap: 1.5,
+              color: Nothing.accent,
+            ),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title.toUpperCase(), style: Nothing.display(24)),
+                const SizedBox(height: 8),
+                Text(subtitle, style: Nothing.body),
+              ],
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.only(top: 4, left: 8),
+            child: Text(
+              '→',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Nothing.ink,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4, right: 18),
-              child: AnimatedDotMatrix(
-                glyph,
-                motion: DotMotion.reveal,
-                dot: 3,
-                gap: 1.5,
-                color: enabled ? Nothing.accent : Nothing.border,
-              ),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title.toUpperCase(),
-                    style: Nothing.display(24).copyWith(color: ink),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(subtitle, style: Nothing.body),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4, left: 8),
-              child: Text(
-                '→',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: enabled ? Nothing.ink : Nothing.border,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// Cierre de la pantalla: cifra grande en puntos y marca.
@@ -216,47 +202,5 @@ class _Footer extends StatelessWidget {
       const Spacer(),
       DotField(columns: 5, rows: 5, dot: 3, gap: 7, color: Nothing.border),
     ],
-  );
-}
-
-/// Marcador para SITEC mientras no se definan sus pantallas.
-class _SitecScreen extends StatelessWidget {
-  const _SitecScreen();
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const DotText('SITEC', dot: 2.5, gap: 1.5)),
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(Nothing.gutter),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SectionLabel('02', 'SITEC'),
-            const SizedBox(height: 28),
-            const DotMatrix(
-              DotGlyphs.cross,
-              dot: 7,
-              gap: 4,
-              color: Nothing.border,
-            ),
-            const SizedBox(height: 28),
-            Text('TODAVÍA\nNO ESTÁ\nLISTO', style: Nothing.display(40)),
-            const SizedBox(height: 20),
-            const Text(
-              'El flujo de SITEC está pendiente de definir. Mientras tanto, '
-              'usa Hackathon para registrar accesos.',
-              style: Nothing.body,
-            ),
-            const Spacer(),
-            SecondaryAction(
-              label: 'Volver a los eventos',
-              icon: Icons.arrow_back_rounded,
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
-        ),
-      ),
-    ),
   );
 }

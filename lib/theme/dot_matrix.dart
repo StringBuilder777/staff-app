@@ -133,6 +133,22 @@ class DotGlyphs {
     '00000000000',
   ];
 
+  /// Salida: flecha que sale por la puerta. Es la pareja de [checkin]: allí la
+  /// flecha llega al marco desde fuera; aquí parte del marco hacia fuera.
+  static const checkout = [
+    '00000000000',
+    '01110000000',
+    '00010000000',
+    '00010000100',
+    '00010000010',
+    '00011111111',
+    '00010000010',
+    '00010000100',
+    '00010000000',
+    '01110000000',
+    '00000000000',
+  ];
+
   /// Desayuno: taza humeante.
   static const breakfast = [
     '00100010000',
@@ -206,6 +222,37 @@ class DotGlyphs {
     '01000000010',
     '01000000010',
     '01000000010',
+  ];
+
+  /// Jueves: hoja de calendario con una J. Los dos días de SITEC comparten
+  /// dibujo y se distinguen por la letra, para elegir el día de un vistazo.
+  static const thursday = [
+    '00100000100',
+    '11111111111',
+    '11111111111',
+    '10000000001',
+    '10011111001',
+    '10000010001',
+    '10000010001',
+    '10010010001',
+    '10001100001',
+    '10000000001',
+    '11111111111',
+  ];
+
+  /// Viernes: hoja de calendario con una V.
+  static const friday = [
+    '00100000100',
+    '11111111111',
+    '11111111111',
+    '10000000001',
+    '10010001001',
+    '10010001001',
+    '10010001001',
+    '10001010001',
+    '10000100001',
+    '10000000001',
+    '11111111111',
   ];
 }
 

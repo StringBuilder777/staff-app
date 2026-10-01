@@ -360,4 +360,78 @@ class StaffBackendService {
       );
     }
   }
+
+  /// 4. Escanea una tarjeta NFC en un punto de acceso de SITEC.
+  ///
+  /// SITEC valida contra sus propios asistentes y no tiene equipos, así que el
+  /// resultado llega sin [ScanNfcResult.teamName].
+  Future<ScanNfcResult> scanSitecNfc({
+    required String nfcToken,
+    required String accessType,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '${BackendConfig.functionsUrl}/staff-sitec-scan-nfc',
+      );
+      final response = await _client.post(
+        url,
+        headers: await _buildHeaders(),
+        body: jsonEncode({'nfcToken': nfcToken, 'accessType': accessType}),
+      );
+
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final asistente = body['asistente'] as Map<String, dynamic>?;
+
+      if (response.statusCode == 200) {
+        return ScanNfcResult(
+          success: true,
+          isDuplicate: false,
+          statusCode: 200,
+          accessType: body['accessType']?.toString() ?? accessType,
+          registeredAt: body['registeredAt']?.toString() ?? '',
+          participantName: _sitecName(asistente),
+          participantId: asistente?['id']?.toString() ?? '',
+        );
+      }
+
+      if (response.statusCode == 409) {
+        return ScanNfcResult(
+          success: false,
+          isDuplicate: true,
+          statusCode: 409,
+          accessType: body['accessType']?.toString() ?? accessType,
+          previouslyRegisteredAt:
+              body['previouslyRegisteredAt']?.toString() ?? '',
+          errorMessage: body['error']?.toString() ?? 'Acceso ya registrado',
+          participantName: _sitecName(asistente),
+        );
+      }
+
+      // Los errores propios de la plataforma, como una función todavía sin
+      // desplegar, traen `message` en vez de `error`.
+      return ScanNfcResult.error(
+        statusCode: response.statusCode,
+        errorMessage:
+            (body['error'] ?? body['message'])?.toString() ??
+            'Error al validar NFC',
+      );
+    } catch (e) {
+      return ScanNfcResult.error(
+        statusCode: 0,
+        errorMessage: 'No se pudo conectar con el servidor: $e',
+      );
+    }
+  }
+
+  /// Nombre completo del asistente. Sin equipo que lo acompañe, el apellido es
+  /// lo que distingue en la puerta a dos asistentes que se llaman igual.
+  static String _sitecName(Map<String, dynamic>? asistente) {
+    final name = [asistente?['nombre'], asistente?['apellidos']]
+        .whereType<String>()
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+    return name.isEmpty ? 'Asistente' : name;
+  }
 }
