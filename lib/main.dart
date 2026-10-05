@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/backend_config.dart';
@@ -1101,6 +1102,10 @@ class _EventScanScreenState extends State<EventScanScreen>
 
   /// Evita dos bucles de lectura solapados sobre el mismo lector.
   bool _loopActive = false;
+
+  /// Motivo por el que no se puede leer (sin NFC, NFC apagado). Mientras esté
+  /// puesto, la pantalla lo muestra en vez de decir que está lista para leer.
+  String? _unavailableMessage;
   bool _isDuplicate = false;
   String? _duplicateTimestamp;
   late final TextEditingController _tokenInputController;
@@ -1116,8 +1121,9 @@ class _EventScanScreenState extends State<EventScanScreen>
     );
     // El lector se arma al entrar, no al pulsar el botón. Si esta pantalla no
     // tiene el modo lector exclusivo, Android despacha la tarjeta a cualquier
-    // app registrada para NFC y saca al operador de aquí.
-    if (!BackendConfig.isSimulation) {
+    // app registrada para NFC y saca al operador de aquí. En iOS no: armarlo
+    // abriría la hoja del sistema sin que nadie la haya pedido.
+    if (!BackendConfig.isSimulation && NfcService.canStayArmed) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _listenLoop());
     }
   }
@@ -1141,9 +1147,11 @@ class _EventScanScreenState extends State<EventScanScreen>
       // sesión para que el bucle no quede esperando una tarjeta que ya nunca
       // va a llegar por ese lector muerto.
       unawaited(const NfcService().cancel());
-    } else if (state == AppLifecycleState.resumed) {
+    } else if (state == AppLifecycleState.resumed && NfcService.canStayArmed) {
       // Y se rearma al volver: sin esto la pantalla queda muda tras cualquier
-      // interrupción y no vuelve a leer nada.
+      // interrupción y no vuelve a leer nada. En iOS no: la propia hoja de
+      // lectura deja la app inactiva (no en pausa) y, al cerrarse, la
+      // reanuda, así que rearmar aquí la reabriría sin fin.
       _listenLoop();
     }
   }
@@ -1169,7 +1177,8 @@ class _EventScanScreenState extends State<EventScanScreen>
   }
 
   /// Mantiene el lector armado mientras la pantalla siga visible, rearmándolo
-  /// después de cada lectura en vez de cerrarlo.
+  /// después de cada lectura en vez de cerrarlo. Donde el lector no puede
+  /// quedarse armado (iOS) hace una sola lectura por llamada.
   Future<void> _listenLoop() async {
     if (_loopActive) return;
     _loopActive = true;
@@ -1178,6 +1187,7 @@ class _EventScanScreenState extends State<EventScanScreen>
         setState(() {
           _isLoading = true;
           _isWaitingForCard = true;
+          _unavailableMessage = null;
         });
 
         final nfcResult = await const NfcService().readTextPayload(
@@ -1192,7 +1202,12 @@ class _EventScanScreenState extends State<EventScanScreen>
         }
 
         if (!nfcResult.success) {
-          setState(() => _isLoading = false);
+          setState(() {
+            _isLoading = false;
+            if (nfcResult.unavailable) {
+              _unavailableMessage = nfcResult.errorMessage;
+            }
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -1201,13 +1216,18 @@ class _EventScanScreenState extends State<EventScanScreen>
               backgroundColor: Colors.red.shade700,
             ),
           );
+          // Sin lector no hay nada que rearmar: reintentar al momento repetiría
+          // el aviso sin fin y, cuando el fallo llega sin esperar a la
+          // plataforma, el bucle no suelta el hilo y congela la app. Se
+          // reintenta con el botón o, en Android, al volver a la app.
+          if (nfcResult.unavailable || !NfcService.canStayArmed) return;
           // Se rearma: dejar el lector cerrado devolvería la tarjeta al
           // despachador del sistema.
           continue;
         }
 
         await _processToken(nfcResult.payload!);
-        if (!mounted) return;
+        if (!mounted || !NfcService.canStayArmed) return;
       }
     } finally {
       _loopActive = false;
@@ -1361,12 +1381,23 @@ class _EventScanScreenState extends State<EventScanScreen>
         DotMatrix(widget.event.glyph, dot: 9, gap: 5, color: Nothing.ink),
       const SizedBox(height: 32),
       Text(
-        _isWaitingForCard ? 'ESPERANDO\nTARJETA' : 'LISTO PARA\nLEER',
+        _unavailableMessage != null
+            ? 'NFC NO\nDISPONIBLE'
+            : _isWaitingForCard
+            ? 'ESPERANDO\nTARJETA'
+            : 'LISTO PARA\nLEER',
         style: Nothing.display(34),
       ),
       const SizedBox(height: 12),
-      const Text(
-        'Mantén una sola tarjeta cerca del teléfono.',
+      Text(
+        _unavailableMessage ??
+            (defaultTargetPlatform == TargetPlatform.iOS &&
+                    !BackendConfig.isSimulation &&
+                    !_isWaitingForCard
+                // En iOS no se lee nada hasta abrir la hoja con el botón.
+                ? 'Pulsa «Leer tarjeta NFC» y acerca la tarjeta a la parte de '
+                      'arriba del iPhone.'
+                : 'Mantén una sola tarjeta cerca del teléfono.'),
         style: Nothing.body,
       ),
     ],
@@ -1433,7 +1464,14 @@ class _EventScanScreenState extends State<EventScanScreen>
         SecondaryAction(
           label: 'Leer otra tarjeta',
           icon: Icons.nfc_rounded,
-          onPressed: () => setState(() => _participant = null),
+          onPressed: () {
+            setState(() => _participant = null);
+            // En Android el lector ya está armado; en iOS hay que abrir la
+            // hoja del sistema para la siguiente tarjeta.
+            if (!BackendConfig.isSimulation && !NfcService.canStayArmed) {
+              _listenLoop();
+            }
+          },
         ),
       ],
     );
