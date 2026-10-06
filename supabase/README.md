@@ -15,6 +15,8 @@ Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), 
 | **`staff-issue-nfc`** | `POST` | `/functions/v1/staff-issue-nfc` | Asigna o reactiva el `nfc_token` de un integrante y genera el payload exacto `staffapp:nfc:<token>`. |
 | **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin`, `desayuno` y `comida` atómicamente evitando duplicados (HTTP 409). |
 | **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida` y `viernes_comida`. No toca las tablas del hackathon. |
+| **`staff-sitec-asistentes`** | `POST` | `/functions/v1/staff-sitec-asistentes` | Lista a los asistentes de SITEC para el registro, en orden alfabético: `id`, `nombre`, `apellidos` y `nfc_emitida_en`. Nunca expone el token NFC. Exige el mismo permiso que los accesos de SITEC (`puede_escanear`). |
+| **`staff-sitec-issue-nfc`** | `POST` | `/functions/v1/staff-sitec-issue-nfc` | Emite la tarjeta de un asistente de SITEC en dos pasos: sin `written` reactiva su `nfc_token` y devuelve el payload `staffapp:nfc:<token>`; con `written: true` la app confirma que la escribió y se marca `nfc_emitida_en`. Exige el mismo permiso que los accesos de SITEC. |
 
 ---
 
@@ -62,11 +64,13 @@ SUPABASE_SERVICE_ROLE_KEY=tu_service_role_key
 > **Nota**: No despliegues a producción sin confirmación explícita del equipo.
 
 ```bash
-# Desplegar las cuatro funciones al proyecto uopfoekxkluotowilzaa
+# Desplegar las seis funciones al proyecto uopfoekxkluotowilzaa
 npx supabase functions deploy staff-team-from-qr --project-ref uopfoekxkluotowilzaa
 npx supabase functions deploy staff-issue-nfc --project-ref uopfoekxkluotowilzaa
 npx supabase functions deploy staff-scan-nfc --project-ref uopfoekxkluotowilzaa
 npx supabase functions deploy staff-sitec-scan-nfc --project-ref uopfoekxkluotowilzaa
+npx supabase functions deploy staff-sitec-asistentes --project-ref uopfoekxkluotowilzaa
+npx supabase functions deploy staff-sitec-issue-nfc --project-ref uopfoekxkluotowilzaa
 
 # O desplegar todas simultáneamente:
 npx supabase functions deploy --project-ref uopfoekxkluotowilzaa
@@ -83,7 +87,7 @@ npx supabase secrets set --project-ref uopfoekxkluotowilzaa \
 
 ## Ejecutar Pruebas y Verificación de Tipos
 
-El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 31 pruebas de integración/unitarias:
+El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 50 pruebas de integración/unitarias:
 
 ```bash
 # 1. Verificación de tipos estricta (sin 'any', TypeScript estricto)
@@ -247,5 +251,43 @@ curl -i -X POST "https://uopfoekxkluotowilzaa.supabase.co/functions/v1/staff-sca
 ```json
 {
   "error": "Acceso no autorizado: se requiere rol de staff o admin"
+}
+```
+
+### Caso 7: `staff-sitec-asistentes` (Éxito)
+```bash
+curl -i -X POST "https://uopfoekxkluotowilzaa.supabase.co/functions/v1/staff-sitec-asistentes" \
+  -H "Authorization: Bearer <TOKEN_STAFF>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+**Respuesta esperada (HTTP 200)**:
+```json
+{
+  "asistentes": [
+    {
+      "id": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+      "nombre": "Marta",
+      "apellidos": "Ruiz",
+      "nfc_emitida_en": null
+    }
+  ]
+}
+```
+
+### Caso 8: `staff-sitec-issue-nfc` (Éxito)
+Primero se pide el payload y, cuando la tarjeta ya está escrita, se repite la llamada con `"written": true` para que el registro la cuente.
+```bash
+curl -i -X POST "https://uopfoekxkluotowilzaa.supabase.co/functions/v1/staff-sitec-issue-nfc" \
+  -H "Authorization: Bearer <TOKEN_STAFF>" \
+  -H "Content-Type: application/json" \
+  -d '{"asistenteId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e"}'
+```
+**Respuesta esperada (HTTP 200)**:
+```json
+{
+  "asistenteId": "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
+  "nfcToken": "6f1c2a9e-4b7d-4e2a-9c3f-1a2b3c4d5e6f",
+  "payload": "staffapp:nfc:6f1c2a9e-4b7d-4e2a-9c3f-1a2b3c4d5e6f"
 }
 ```

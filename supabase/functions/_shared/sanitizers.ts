@@ -2,6 +2,7 @@ import type {
   OperationalEquipo,
   OperationalIntegrante,
   OperationalSitecAsistente,
+  SitecRegistroAsistente,
 } from './types.ts';
 
 /**
@@ -56,5 +57,20 @@ export function sanitizeSitecAsistente(row: Record<string, unknown>): Operationa
     viernes_entrada_en: typeof row.viernes_entrada_en === 'string' ? row.viernes_entrada_en : null,
     viernes_salida_en: typeof row.viernes_salida_en === 'string' ? row.viernes_salida_en : null,
     viernes_comida_en: typeof row.viernes_comida_en === 'string' ? row.viernes_comida_en : null,
+  };
+}
+
+/**
+ * Asistente de SITEC para el registro. Lista blanca estricta: ni el token NFC,
+ * que solo sale al emitir la tarjeta, ni lo que se cargue más adelante.
+ */
+export function sanitizeSitecRegistroAsistente(
+  row: Record<string, unknown>
+): SitecRegistroAsistente {
+  return {
+    id: typeof row.id === 'string' ? row.id : String(row.id ?? ''),
+    nombre: typeof row.nombre === 'string' ? row.nombre : '',
+    apellidos: typeof row.apellidos === 'string' ? row.apellidos : null,
+    nfc_emitida_en: typeof row.nfc_emitida_en === 'string' ? row.nfc_emitida_en : null,
   };
 }

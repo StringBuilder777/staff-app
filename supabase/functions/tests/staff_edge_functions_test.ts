@@ -6,6 +6,8 @@ import { handleStaffTeamFromQr } from '../staff-team-from-qr/index.ts';
 import { handleStaffIssueNfc } from '../staff-issue-nfc/index.ts';
 import { handleStaffScanNfc } from '../staff-scan-nfc/index.ts';
 import { handleStaffSitecScanNfc } from '../staff-sitec-scan-nfc/index.ts';
+import { handleStaffSitecAsistentes } from '../staff-sitec-asistentes/index.ts';
+import { handleStaffSitecIssueNfc } from '../staff-sitec-issue-nfc/index.ts';
 import { VALID_SITEC_ACCESS_TYPES } from '../_shared/types.ts';
 import type {
   TeamFromQrResponse,
@@ -14,6 +16,8 @@ import type {
   ScanNfcDuplicateResponse,
   SitecScanNfcAcceptedResponse,
   SitecScanNfcDuplicateResponse,
+  SitecAsistentesResponse,
+  SitecIssueNfcResponse,
   ApiErrorResponse,
 } from '../_shared/types.ts';
 
@@ -757,6 +761,317 @@ async function runTests(): Promise<void> {
 
     const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-1');
     assertEqual(asistente?.jueves_entrada_en, null, 'No registró el acceso');
+  });
+
+  // =========================================================================
+  // 5. Pruebas para: staff-sitec-asistentes
+  // =========================================================================
+  console.log('\n--- Suite 5: staff-sitec-asistentes ---');
+
+  function sitecAsistentesRequest(authorization?: string, method = 'POST'): Request {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authorization) headers.Authorization = authorization;
+    return new Request('http://localhost/functions/v1/staff-sitec-asistentes', {
+      method,
+      headers,
+      body: method === 'POST' ? JSON.stringify({}) : undefined,
+    });
+  }
+
+  await test('Éxito: Lista a los asistentes de SITEC por orden alfabético (200)', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid'),
+      client
+    );
+    assertEqual(res.status, 200, 'HTTP Status 200');
+
+    const data = (await res.json()) as SitecAsistentesResponse;
+    assertEqual(data.asistentes.length, 2, 'Dos asistentes');
+    // «Jorge Salas» va antes que «Marta Ruiz», aunque en la tabla vaya después.
+    assertEqual(data.asistentes[0].id, 'sitec-asis-2', 'Primero Jorge');
+    assertEqual(data.asistentes[1].id, 'sitec-asis-1', 'Después Marta');
+    assertEqual(data.asistentes[1].nombre, 'Marta', 'Nombre');
+    assertEqual(data.asistentes[1].apellidos, 'Ruiz', 'Apellidos');
+  });
+
+  await test('Privacidad: La lista nunca expone el token NFC, correo ni teléfono', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid'),
+      client
+    );
+    const raw = await res.text();
+
+    assert(!raw.includes(SITEC_TOKEN), 'No expone el token NFC');
+    assert(!raw.includes('marta.ruiz@example.com'), 'No expone el correo');
+    assert(!raw.includes('+528111111111'), 'No expone el teléfono');
+
+    const data = JSON.parse(raw) as SitecAsistentesResponse;
+    for (const asistente of data.asistentes) {
+      assertEqual(
+        Object.keys(asistente).sort().join(','),
+        'apellidos,id,nfc_emitida_en,nombre',
+        'Solo los campos del registro'
+      );
+    }
+  });
+
+  await test('Tarjeta emitida: Llega la fecha de emisión de quien ya tiene tarjeta', async () => {
+    const dbState = createInitialMockDatabaseState();
+    dbState.sitec_asistentes[0].nfc_emitida_en = '2026-10-08T15:00:00.000Z';
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid'),
+      client
+    );
+    const data = (await res.json()) as SitecAsistentesResponse;
+
+    const marta = data.asistentes.find((a) => a.id === 'sitec-asis-1');
+    const jorge = data.asistentes.find((a) => a.id === 'sitec-asis-2');
+    assertEqual(marta?.nfc_emitida_en, '2026-10-08T15:00:00.000Z', 'Marta ya tiene tarjeta');
+    assertEqual(jorge?.nfc_emitida_en, null, 'Jorge todavía no');
+  });
+
+  await test('Error de autenticación: Falta cabecera Authorization (401)', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const res = await handleStaffSitecAsistentes(sitecAsistentesRequest(), client);
+    assertEqual(res.status, 401, 'HTTP Status 401');
+  });
+
+  await test('Error de rol: Usuario con rol participante es denegado (403)', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-part-valid'),
+      client
+    );
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+  });
+
+  await test('Método no permitido: GET devuelve 405', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid', 'GET'),
+      client
+    );
+    assertEqual(res.status, 405, 'HTTP Status 405');
+  });
+
+  await test('Función sin permiso: Mentor no ve la lista de asistentes (403)', async () => {
+    const dbState = createInitialMockDatabaseState();
+    dbState.staff[0].rol = 'Mentor';
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid'),
+      client
+    );
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+  });
+
+  await test('Error de base de datos: La lista devuelve 500', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const from = client.from.bind(client);
+    client.from = ((table: string) => {
+      if (table !== 'sitec_asistentes') return from(table);
+      return {
+        select: () =>
+          Promise.resolve({
+            data: null,
+            error: { code: '57014', message: 'canceling statement due to statement timeout' },
+          }),
+      };
+    }) as unknown as typeof client.from;
+
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid'),
+      client
+    );
+    assertEqual(res.status, 500, 'HTTP Status 500');
+  });
+
+  await test('Sin alta en staff: No ve la lista de asistentes (403)', async () => {
+    const dbState = createInitialMockDatabaseState();
+    dbState.staff = [];
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecAsistentes(
+      sitecAsistentesRequest('Bearer jwt-staff-valid'),
+      client
+    );
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+  });
+
+  // =========================================================================
+  // 6. Pruebas para: staff-sitec-issue-nfc
+  // =========================================================================
+  console.log('\n--- Suite 6: staff-sitec-issue-nfc ---');
+
+  function sitecIssueRequest(body: unknown, authorization = 'Bearer jwt-staff-valid'): Request {
+    return new Request('http://localhost/functions/v1/staff-sitec-issue-nfc', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: authorization },
+      body: JSON.stringify(body),
+    });
+  }
+
+  await test('Preparar: Devuelve el payload con el token del asistente sin marcarla escrita (200)', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-1' }),
+      client
+    );
+    assertEqual(res.status, 200, 'HTTP Status 200');
+
+    const data = (await res.json()) as SitecIssueNfcResponse;
+    assertEqual(data.asistenteId, 'sitec-asis-1', 'Asistente ID');
+    assertEqual(data.nfcToken, SITEC_TOKEN, 'Reutiliza el token del asistente');
+    assertEqual(data.payload, `staffapp:nfc:${SITEC_TOKEN}`, 'Payload exacto');
+
+    const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-1');
+    assert(Boolean(asistente?.nfc_activa), 'nfc_activa debe ser true');
+    // Todavía no se ha escrito ninguna tarjeta: el registro no debe contarla.
+    assert(!asistente?.nfc_emitida_en, 'nfc_emitida_en sigue vacío');
+  });
+
+  await test('Confirmar: Con written=true marca la tarjeta como escrita', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-1', written: true }),
+      client
+    );
+    assertEqual(res.status, 200, 'HTTP Status 200');
+
+    const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-1');
+    assert(typeof asistente?.nfc_emitida_en === 'string', 'nfc_emitida_en debe tener fecha');
+    assertEqual(asistente?.nfc_token, SITEC_TOKEN, 'El token no cambia');
+  });
+
+  await test('Id sin formato uuid: El error 22P02 de Postgres devuelve 404, no 500', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    // El mock no reproduce el error de Postgres ante un uuid mal formado.
+    const from = client.from.bind(client);
+    client.from = ((table: string) => {
+      if (table !== 'sitec_asistentes') return from(table);
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: null,
+              error: { code: '22P02', message: 'invalid input syntax for type uuid' },
+            }),
+          }),
+        }),
+      };
+    }) as unknown as typeof client.from;
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'no-es-uuid' }),
+      client
+    );
+    assertEqual(res.status, 404, 'HTTP Status 404');
+  });
+
+  await test('Error de base de datos: Devuelve 500', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const from = client.from.bind(client);
+    client.from = ((table: string) => {
+      if (table !== 'sitec_asistentes') return from(table);
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: null,
+              error: { code: '57014', message: 'canceling statement due to statement timeout' },
+            }),
+          }),
+        }),
+      };
+    }) as unknown as typeof client.from;
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-1' }),
+      client
+    );
+    assertEqual(res.status, 500, 'HTTP Status 500');
+  });
+
+  await test('Función sin permiso: Mentor no emite tarjetas de SITEC (403)', async () => {
+    const dbState = createInitialMockDatabaseState();
+    dbState.staff[0].rol = 'Mentor';
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-1' }),
+      client
+    );
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+  });
+
+  await test('Reactivación: Emitir la tarjeta de un asistente inactivo la reactiva', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-2' }),
+      client
+    );
+    assertEqual(res.status, 200, 'HTTP Status 200');
+
+    const data = (await res.json()) as SitecIssueNfcResponse;
+    assertEqual(data.payload, `staffapp:nfc:${SITEC_TOKEN_INACTIVO}`, 'Payload con su token');
+    const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-2');
+    assertEqual(asistente?.nfc_activa, true, 'Tarjeta reactivada');
+  });
+
+  await test('Formato del payload: No incluye ningún dato personal', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-1' }),
+      client
+    );
+    const data = (await res.json()) as SitecIssueNfcResponse;
+
+    assert(!data.payload.includes('Marta'), 'No debe contener el nombre');
+    assert(!data.payload.includes('Ruiz'), 'No debe contener los apellidos');
+  });
+
+  await test('Tablas separadas: Un integrante del hackathon no existe en SITEC (404)', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'int-uuid-1' }),
+      client
+    );
+    assertEqual(res.status, 404, 'HTTP Status 404');
+  });
+
+  await test('Validación de payload: asistenteId vacío devuelve 400', async () => {
+    const client = createMockSupabaseClient(createInitialMockDatabaseState());
+    const res = await handleStaffSitecIssueNfc(sitecIssueRequest({ asistenteId: '  ' }), client);
+    assertEqual(res.status, 400, 'HTTP Status 400');
+  });
+
+  await test('Error de rol: Un participante no emite tarjetas (403)', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecIssueNfc(
+      sitecIssueRequest({ asistenteId: 'sitec-asis-1' }, 'Bearer jwt-part-valid'),
+      client
+    );
+    assertEqual(res.status, 403, 'HTTP Status 403 Forbidden');
+
+    const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-1');
+    assert(!asistente?.nfc_emitida_en, 'No emitió la tarjeta');
   });
 
   console.log(`\n🎉 Todas las ${passedCount} pruebas se ejecutaron exitosamente.`);

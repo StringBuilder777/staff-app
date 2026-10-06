@@ -153,6 +153,33 @@ export interface SitecScanNfcDuplicateResponse {
   asistente: OperationalSitecAsistente;
 }
 
+/**
+ * Asistente de SITEC tal como lo ve el registro: lo justo para encontrarlo por
+ * nombre y saber si ya tiene la tarjeta escrita. Nunca lleva el token NFC.
+ */
+export interface SitecRegistroAsistente {
+  id: string;
+  nombre: string;
+  apellidos: string | null;
+  nfc_emitida_en: string | null;
+}
+
+export interface SitecAsistentesResponse {
+  asistentes: SitecRegistroAsistente[];
+}
+
+export interface SitecIssueNfcRequest {
+  asistenteId: string;
+  /** true cuando la app confirma que ya escribió la tarjeta. */
+  written?: boolean;
+}
+
+export interface SitecIssueNfcResponse {
+  asistenteId: string;
+  nfcToken: string;
+  payload: string; // Exactly `staffapp:nfc:<nfcToken>`
+}
+
 export interface ApiErrorResponse {
   error: string;
   details?: unknown;

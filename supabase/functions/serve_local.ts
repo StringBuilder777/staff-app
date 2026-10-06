@@ -5,6 +5,8 @@ import { handleStaffTeamFromQr } from './staff-team-from-qr/index.ts';
 import { handleStaffIssueNfc } from './staff-issue-nfc/index.ts';
 import { handleStaffScanNfc } from './staff-scan-nfc/index.ts';
 import { handleStaffSitecScanNfc } from './staff-sitec-scan-nfc/index.ts';
+import { handleStaffSitecAsistentes } from './staff-sitec-asistentes/index.ts';
+import { handleStaffSitecIssueNfc } from './staff-sitec-issue-nfc/index.ts';
 
 // 1. Cargar variables de entorno desde supabase/.env.local si existe
 const envPath = path.resolve(import.meta.dirname ?? '.', '../.env.local');
@@ -100,6 +102,10 @@ const server = http.createServer(async (req, res) => {
       webRes = await handleStaffScanNfc(webReq);
     } else if (url.pathname.includes('staff-sitec-scan-nfc')) {
       webRes = await handleStaffSitecScanNfc(webReq);
+    } else if (url.pathname.includes('staff-sitec-asistentes')) {
+      webRes = await handleStaffSitecAsistentes(webReq);
+    } else if (url.pathname.includes('staff-sitec-issue-nfc')) {
+      webRes = await handleStaffSitecIssueNfc(webReq);
     } else if (url.pathname === '/' || url.pathname === '/health') {
       webRes = new Response(
         JSON.stringify({
@@ -111,6 +117,8 @@ const server = http.createServer(async (req, res) => {
             '/functions/v1/staff-issue-nfc',
             '/functions/v1/staff-scan-nfc',
             '/functions/v1/staff-sitec-scan-nfc',
+            '/functions/v1/staff-sitec-asistentes',
+            '/functions/v1/staff-sitec-issue-nfc',
           ],
         }),
         {
@@ -130,6 +138,8 @@ const server = http.createServer(async (req, res) => {
             '/functions/v1/staff-issue-nfc',
             '/functions/v1/staff-scan-nfc',
             '/functions/v1/staff-sitec-scan-nfc',
+            '/functions/v1/staff-sitec-asistentes',
+            '/functions/v1/staff-sitec-issue-nfc',
           ],
         }),
         {
@@ -170,6 +180,8 @@ Rutas activas:
    POST /functions/v1/staff-issue-nfc
    POST /functions/v1/staff-scan-nfc
    POST /functions/v1/staff-sitec-scan-nfc
+   POST /functions/v1/staff-sitec-asistentes
+   POST /functions/v1/staff-sitec-issue-nfc
 
 Para conectar tu teléfono:
    1. En otra terminal ejecuta: npx localtunnel --port ${PORT}
