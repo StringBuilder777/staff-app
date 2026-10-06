@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:staff_app/config/backend_config.dart';
 import 'package:staff_app/main.dart';
@@ -135,5 +136,56 @@ void main() {
     expect(find.text('Equipo Boreal'), findsNothing);
     // Título de la barra y fila de evento del resultado.
     expect(find.text('Jueves · Entrada'), findsNWidgets(2));
+  });
+
+  testWidgets('SITEC registration finds an attendee and writes the card', (
+    tester,
+  ) async {
+    // Pantalla de teléfono: en el lienzo por defecto (800 × 600) la lista no
+    // llega a construir la última fila.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
+    BackendConfig.mode = BackendMode.simulation;
+    await abrirSitec(tester);
+
+    await tester.tap(find.text('REGISTRO'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ana Torres'), findsOneWidget);
+    expect(find.text('Sofía Treviño'), findsOneWidget);
+
+    // Sin tildes, sin mayúsculas y en cualquier orden.
+    await tester.enterText(find.byType(TextField), 'trevino SOF');
+    await tester.pumpAndSettle();
+    expect(find.text('Sofía Treviño'), findsOneWidget);
+    expect(find.text('Ana Torres'), findsNothing);
+
+    await tester.tap(find.text('ESCRIBIR NFC'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SIMULAR ESCRITURA'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Tarjeta escrita'), findsOneWidget);
+    expect(find.text('Tarjeta de Sofía Treviño escrita.'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'zzz');
+    await tester.pumpAndSettle();
+    expect(find.text('Nadie coincide con «zzz».'), findsOneWidget);
+  });
+
+  testWidgets('SITEC registration offers a retry when the list fails', (
+    tester,
+  ) async {
+    // Fuera de simulación la lista viene del backend; en las pruebas todas las
+    // peticiones HTTP fallan, que es justo el caso que se quiere ver.
+    BackendConfig.mode = BackendMode.tunnel;
+    addTearDown(() => BackendConfig.mode = BackendMode.simulation);
+    await abrirSitec(tester);
+
+    await tester.tap(find.text('REGISTRO'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SIN LISTA'), findsOneWidget);
+    expect(find.text('REINTENTAR'), findsOneWidget);
   });
 }

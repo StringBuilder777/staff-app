@@ -852,9 +852,8 @@ class SitecScreen extends StatelessWidget {
             child: _ActionCard(
               index: '01',
               title: 'Registro',
-              description: 'Pendiente: alta de asistentes y sus tarjetas NFC.',
+              description: 'Busca a cada asistente y escribe su tarjeta NFC.',
               glyph: DotGlyphs.person,
-              enabled: false,
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) => const _SitecRegistrationScreen(),
@@ -968,50 +967,408 @@ class _SitecDayScreen extends StatelessWidget {
   );
 }
 
-/// Registro de SITEC, todavía por definir: los asistentes aún no están
-/// cargados. La fila existe para que el staff vea qué falta y por qué.
-class _SitecRegistrationScreen extends StatelessWidget {
+/// Registro de SITEC: los asistentes ya están cargados, así que aquí solo se
+/// busca a cada uno por su nombre y se escribe su tarjeta.
+class _SitecRegistrationScreen extends StatefulWidget {
   const _SitecRegistrationScreen();
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Registro'),
-      backgroundColor: Colors.transparent,
-    ),
-    body: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(Nothing.gutter),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SectionLabel('01', 'Registro SITEC'),
-            const SizedBox(height: 28),
-            const DotMatrix(
-              DotGlyphs.person,
-              dot: 7,
-              gap: 4,
-              color: Nothing.border,
-            ),
-            const SizedBox(height: 28),
-            Text('TODAVÍA\nNO ESTÁ\nLISTO', style: Nothing.display(40)),
-            const SizedBox(height: 20),
-            const Text(
-              'El alta de asistentes y la escritura de sus tarjetas NFC se '
-              'habilitarán más adelante.',
-              style: Nothing.body,
-            ),
-            const Spacer(),
-            SecondaryAction(
-              label: 'Volver a SITEC',
-              icon: Icons.arrow_back_rounded,
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ],
+  State<_SitecRegistrationScreen> createState() =>
+      _SitecRegistrationScreenState();
+}
+
+class _SitecRegistrationScreenState extends State<_SitecRegistrationScreen> {
+  static const List<SitecAsistente> _simulatedAsistentes = [
+    SitecAsistente(id: 'sim-sitec-1', fullName: 'Ana Torres'),
+    SitecAsistente(id: 'sim-sitec-2', fullName: 'Jorge Salas'),
+    SitecAsistente(id: 'sim-sitec-3', fullName: 'Marta Ruiz'),
+    SitecAsistente(id: 'sim-sitec-4', fullName: 'Sofía Treviño'),
+  ];
+
+  final TextEditingController _searchController = TextEditingController();
+  List<SitecAsistente> _asistentes = const [];
+
+  /// Asistentes con la tarjeta ya escrita, según el backend o en esta sesión.
+  final Set<String> _issuedIds = <String>{};
+
+  /// Tarjetas escritas desde este teléfono. Una recarga no las borra aunque el
+  /// backend aún no las tenga: la confirmación pudo fallar o llegar después.
+  final Set<String> _writtenHere = <String>{};
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    // UnderlineField no avisa de cada letra; el filtro escucha al controlador.
+    _searchController.addListener(() => setState(() {}));
+    if (BackendConfig.isSimulation) {
+      _asistentes = _simulatedAsistentes;
+    } else {
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load({bool fromRefresh = false}) async {
+    // Al tirar para recargar ya hay un indicador: el spinner propio solo sale
+    // en la primera carga o al pulsar «Reintentar».
+    final firstLoad = _asistentes.isEmpty;
+    setState(() => _isLoading = firstLoad && !fromRefresh);
+
+    final res = await StaffBackendService().listSitecAsistentes();
+    if (!mounted) return;
+
+    setState(() {
+      _isLoading = false;
+      if (res.success) {
+        _errorMessage = null;
+        _asistentes = res.asistentes;
+        _issuedIds
+          ..clear()
+          ..addAll(
+            res.asistentes.where((a) => a.nfcIssuedAt != null).map((a) => a.id),
+          )
+          ..addAll(_writtenHere);
+      } else if (firstLoad) {
+        _errorMessage =
+            res.errorMessage ??
+            'No se pudo cargar la lista de asistentes (${res.statusCode}).';
+      }
+    });
+
+    // Si falla una recarga, la lista que ya había sigue siendo útil: no se
+    // tapa con el error, solo se avisa.
+    if (!res.success && !firstLoad) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res.errorMessage ?? 'No se pudo actualizar la lista.'),
+        ),
+      );
+    }
+  }
+
+  /// Asistentes cuyo nombre contiene todas las palabras buscadas, en cualquier
+  /// orden y sin distinguir tildes ni mayúsculas.
+  List<SitecAsistente> get _matches {
+    final words = _normalize(
+      _searchController.text,
+    ).split(' ').where((word) => word.isNotEmpty);
+    if (words.isEmpty) return _asistentes;
+    return _asistentes.where((a) {
+      final name = _normalize(a.fullName);
+      return words.every(name.contains);
+    }).toList();
+  }
+
+  /// En la mesa nadie teclea «Peña» o «Jesús» con su tilde, y la lista trae
+  /// nombres escritos de las dos maneras.
+  static String _normalize(String text) {
+    const accented = 'áàäâéèëêíìïîóòöôúùüûñ';
+    const plain = 'aaaaeeeeiiiioooouuuun';
+    final buffer = StringBuffer();
+    for (final char in text.toLowerCase().split('')) {
+      final i = accented.indexOf(char);
+      buffer.write(i == -1 ? char : plain[i]);
+    }
+    return buffer
+        .toString()
+        // Tildes sueltas, por si algún nombre llegó como letra + acento.
+        .replaceAll(RegExp('[\u0300-\u036f]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  Future<void> _writeCard(SitecAsistente asistente) async {
+    final result = await _showWriteSheet(asistente);
+    if (!result.written || !mounted) return;
+
+    setState(() {
+      _issuedIds.add(asistente.id);
+      _writtenHere.add(asistente.id);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.saved
+              ? 'Tarjeta de ${asistente.fullName} escrita.'
+              // La tarjeta funciona igual; solo falta que el registro la cuente.
+              : 'Tarjeta de ${asistente.fullName} escrita, pero no se guardó '
+                    'en el servidor: en otros teléfonos aparecerá pendiente.',
+        ),
+        backgroundColor: result.saved ? Nothing.ok : null,
+      ),
+    );
+  }
+
+  /// Emite la credencial en el backend, la escribe en la tarjeta que se
+  /// acerque y confirma la escritura. [written] dice si la tarjeta quedó
+  /// escrita y [saved], si el backend lo registró.
+  Future<({bool written, bool saved})> _showWriteSheet(
+    SitecAsistente asistente,
+  ) async {
+    final isSimulation = BackendConfig.isSimulation;
+    var isSubmitting = false;
+    String? localError;
+
+    // showModalBottomSheet se resuelve en cuanto la hoja empieza a cerrarse,
+    // pero su contenido sigue montado durante la animación. Sin esta marca,
+    // una emisión que respondiera en ese momento arrancaría una escritura que
+    // ya nadie cancelaría.
+    var sheetOpen = true;
+
+    // Confirmación en curso de una tarjeta ya escrita. Si la hoja se cierra a
+    // mano mientras viaja, la tarjeta cuenta igual.
+    Future<IssueNfcResult>? confirmation;
+
+    final result = await showModalBottomSheet<({bool written, bool saved})>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (modalContext, setModalState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            Nothing.gutter,
+            8,
+            Nothing.gutter,
+            MediaQuery.of(modalContext).viewInsets.bottom + 34,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SectionLabel('NFC', 'Escribir tarjeta'),
+              const SizedBox(height: 16),
+              Text(asistente.fullName, style: Nothing.display(30)),
+              const SizedBox(height: 10),
+              Text(
+                isSimulation
+                    ? 'Acerca una tarjeta NFC vacía al teléfono.'
+                    : 'Se emite su credencial y después hay que acercar una '
+                          'tarjeta NFC escribible.',
+                style: Nothing.body,
+              ),
+              if (localError != null) ...[
+                const SizedBox(height: 18),
+                Notice(tone: NoticeTone.danger, message: localError!),
+              ],
+              const SizedBox(height: 24),
+              PrimaryAction(
+                // Etiquetas cortas: PrimaryAction no recorta el texto y en un
+                // móvil estrecho una larga se sale del botón.
+                label: isSimulation
+                    ? 'Simular escritura'
+                    : isSubmitting
+                    ? 'Escribiendo'
+                    : 'Escribir tarjeta',
+                icon: Icons.nfc_rounded,
+                busy: isSubmitting,
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (isSimulation) {
+                          Navigator.pop(sheetContext, (
+                            written: true,
+                            saved: true,
+                          ));
+                          return;
+                        }
+                        setModalState(() {
+                          isSubmitting = true;
+                          localError = null;
+                        });
+
+                        final res = await StaffBackendService().issueSitecNfc(
+                          asistente.id,
+                        );
+                        if (!sheetOpen || !modalContext.mounted) return;
+                        final payload = res.payload?.trim() ?? '';
+                        if (!res.success || payload.isEmpty) {
+                          setModalState(() {
+                            isSubmitting = false;
+                            localError = res.success
+                                ? 'El servidor no devolvió un payload NFC válido.'
+                                : res.errorMessage ??
+                                      'Error al emitir la tarjeta NFC.';
+                          });
+                          return;
+                        }
+
+                        final writeResult = await const NfcService()
+                            .writeTextPayload(payload);
+                        if (!sheetOpen || !modalContext.mounted) return;
+                        if (writeResult.success) {
+                          BackendConfig.lastIssuedNfcToken = res.nfcToken ?? '';
+                          // Solo ahora cuenta como tarjeta escrita en el
+                          // registro. Si no se guarda, la tarjeta funciona igual.
+                          final pending = StaffBackendService().issueSitecNfc(
+                            asistente.id,
+                            written: true,
+                          );
+                          confirmation = pending;
+                          final confirm = await pending;
+                          if (!sheetOpen || !sheetContext.mounted) return;
+                          Navigator.pop(sheetContext, (
+                            written: true,
+                            saved: confirm.success,
+                          ));
+                          return;
+                        }
+                        setModalState(() {
+                          isSubmitting = false;
+                          // Cancelar la escritura no es un error que mostrar.
+                          if (!writeResult.cancelled) {
+                            localError =
+                                writeResult.errorMessage ??
+                                'No se pudo escribir la tarjeta NFC.';
+                          }
+                        });
+                      },
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+    sheetOpen = false;
+    // El sheet se puede descartar mientras el lector espera la tarjeta. Sin
+    // este cierre la sesión quedaría abierta y la siguiente tarjeta que se
+    // acercara se escribiría con la credencial de este asistente. Va justo al
+    // cerrarse la hoja, antes de esperar una confirmación: después podría
+    // cortar otra sesión NFC que ya no es la suya.
+    await const NfcService().cancel();
+    if (result != null) return result;
+
+    final pendingConfirmation = confirmation;
+    if (pendingConfirmation != null) {
+      final confirm = await pendingConfirmation;
+      return (written: true, saved: confirm.success);
+    }
+    return (written: false, saved: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _matches;
+    final query = _searchController.text.trim();
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Registro'),
+        backgroundColor: Colors.transparent,
+        actions: const [_TopBarActions()],
+      ),
+      body: SafeArea(
+        // Deslizar hacia abajo recarga: con dos teléfonos en la mesa, cada uno
+        // ve así las tarjetas que escribió el otro.
+        child: RefreshIndicator(
+          color: Nothing.ink,
+          onRefresh: BackendConfig.isSimulation
+              ? () async {}
+              : () => _load(fromRefresh: true),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(
+              Nothing.gutter,
+              8,
+              Nothing.gutter,
+              Nothing.gutter,
+            ),
+            children: [
+              const Reveal(child: SectionLabel('01', 'Registro SITEC')),
+              const SizedBox(height: 20),
+              Reveal(
+                step: 1,
+                child: Text('REGISTRO', style: Nothing.display(46)),
+              ),
+              const SizedBox(height: 14),
+              const Reveal(
+                step: 2,
+                child: Text(
+                  'Busca al asistente por su nombre y escribe su tarjeta.',
+                  style: Nothing.body,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  DisplayNumber(
+                    value: '${_asistentes.length}'.padLeft(2, '0'),
+                    caption: 'Asistentes',
+                    size: 46,
+                  ),
+                  const SizedBox(width: 36),
+                  DisplayNumber(
+                    value: '${_issuedIds.length}'.padLeft(2, '0'),
+                    caption: 'Tarjetas',
+                    size: 46,
+                    color:
+                        _asistentes.isNotEmpty &&
+                            _issuedIds.length >= _asistentes.length
+                        ? Nothing.ok
+                        : Nothing.ink,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 28),
+              UnderlineField(
+                label: 'Buscar asistente',
+                controller: _searchController,
+                textInputAction: TextInputAction.search,
+              ),
+              const SizedBox(height: 20),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Nothing.ink,
+                    ),
+                  ),
+                )
+              else if (_errorMessage != null) ...[
+                Notice(
+                  tone: NoticeTone.danger,
+                  label: 'Sin lista',
+                  message: _errorMessage!,
+                ),
+                const SizedBox(height: 16),
+                SecondaryAction(
+                  label: 'Reintentar',
+                  icon: Icons.refresh_rounded,
+                  onPressed: _load,
+                ),
+              ] else if (matches.isEmpty)
+                Text(
+                  _asistentes.isEmpty
+                      ? 'Todavía no hay asistentes cargados.'
+                      : 'Nadie coincide con «$query».',
+                  style: Nothing.body,
+                )
+              else
+                // Sin separador arriba: la línea del buscador ya hace de borde.
+                ...matches.indexed.map(
+                  (entry) => _ParticipantRow(
+                    index: '${entry.$1 + 1}'.padLeft(2, '0'),
+                    name: entry.$2.fullName,
+                    written: _issuedIds.contains(entry.$2.id),
+                    writtenLabel: 'Tarjeta escrita',
+                    onWrite: () => _writeCard(entry.$2),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Día de SITEC con sus puntos de acceso.
@@ -1525,7 +1882,6 @@ class _ActionCard extends StatelessWidget {
     required this.description,
     required this.glyph,
     required this.onTap,
-    this.enabled = true,
   });
 
   final String index;
@@ -1534,14 +1890,9 @@ class _ActionCard extends StatelessWidget {
   final List<String> glyph;
   final VoidCallback onTap;
 
-  /// Una operación pendiente se pinta apagada pero sigue siendo pulsable: el
-  /// staff ve que existe y, al entrar, por qué todavía no está lista.
-  final bool enabled;
-
   @override
   Widget build(BuildContext context) {
-    final ink = enabled ? Nothing.ink : Nothing.muted;
-    final mark = enabled ? Nothing.ink : Nothing.border;
+    const ink = Nothing.ink;
 
     return InkWell(
       onTap: onTap,
@@ -1559,7 +1910,7 @@ class _ActionCard extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 4, right: 18),
-              child: DotMatrix(glyph, dot: 3, gap: 1.5, color: mark),
+              child: DotMatrix(glyph, dot: 3, gap: 1.5, color: ink),
             ),
             Expanded(
               child: Column(
@@ -1581,7 +1932,7 @@ class _ActionCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: mark,
+                  color: ink,
                 ),
               ),
             ),
@@ -1600,6 +1951,7 @@ class _ParticipantRow extends StatelessWidget {
     required this.name,
     required this.written,
     this.nfcToken,
+    this.writtenLabel = 'Credencial activa',
     required this.onWrite,
   });
 
@@ -1607,6 +1959,9 @@ class _ParticipantRow extends StatelessWidget {
   final String name;
   final bool written;
   final String? nfcToken;
+
+  /// Texto bajo el nombre cuando [written] es true.
+  final String writtenLabel;
   final VoidCallback onWrite;
 
   @override
@@ -1637,10 +1992,11 @@ class _ParticipantRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    // `written` sale de `nfc_activa` del backend: significa
-                    // que la credencial está emitida, no que se haya escrito
-                    // una tarjeta física en esta sesión.
-                    written ? 'Credencial activa' : 'Pendiente de escribir',
+                    // Qué significa `written` lo decide quien usa la fila: en
+                    // el hackathon sale de `nfc_activa` (credencial emitida);
+                    // en SITEC, de una tarjeta escrita (confirmada en el
+                    // backend o escrita en esta sesión).
+                    written ? writtenLabel : 'Pendiente de escribir',
                     style: Nothing.label.copyWith(
                       color: written ? Nothing.ok : Nothing.muted,
                     ),

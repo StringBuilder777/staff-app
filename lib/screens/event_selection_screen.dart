@@ -98,7 +98,7 @@ class EventSelectionScreen extends StatelessWidget {
             child: _EventRow(
               index: '02',
               title: 'SITEC',
-              subtitle: 'Accesos de jueves y viernes',
+              subtitle: 'Registro y accesos de jueves y viernes',
               glyph: DotGlyphs.nfc,
               onTap: () => Navigator.of(
                 context,
