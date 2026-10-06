@@ -547,6 +547,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     bool isSubmitting = false;
     String? localError;
 
+    // showModalBottomSheet se resuelve en cuanto la hoja empieza a cerrarse,
+    // pero su contenido sigue montado durante la animación. Sin esta marca,
+    // una emisión que respondiera en ese momento arrancaría una escritura que
+    // ya nadie cancelaría.
+    var sheetOpen = true;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -635,7 +641,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                           });
                           final service = StaffBackendService();
                           final res = await service.issueNfc(participant.id);
-                          if (!modalContext.mounted) return;
+                          if (!sheetOpen || !modalContext.mounted) return;
                           if (res.success) {
                             final payload = res.payload?.trim() ?? '';
                             if (payload.isEmpty) {
@@ -649,7 +655,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
                             final writeResult = await const NfcService()
                                 .writeTextPayload(payload);
-                            if (!modalContext.mounted) return;
+                            if (!sheetOpen || !modalContext.mounted) return;
                             if (!mounted) return;
                             if (writeResult.success) {
                               BackendConfig.lastIssuedNfcToken =
@@ -707,6 +713,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
       ),
     );
+    sheetOpen = false;
 
     // El sheet se puede descartar mientras el lector espera la tarjeta. Sin
     // este cierre la sesión quedaría abierta y la siguiente tarjeta que se
