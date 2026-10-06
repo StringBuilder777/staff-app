@@ -16,6 +16,10 @@ flutter run
 
 La app de iOS solo necesita la firma con una cuenta de Apple Developer de pago. Los pasos para firmarla y subirla a TestFlight están en [ios/FIRMA.md](ios/FIRMA.md).
 
+## iPhone sin la app
+
+El staff con iPhone puede registrar accesos sin instalar la app: las tarjetas llevan una dirección que el iPhone abre en Safari, en la página de [lector-web/](lector-web/README.md). Para escribir las tarjetas así, la app se compila con `--dart-define=CARD_WEB_URL=<dirección de la página>`.
+
 ## Backend (Supabase Edge Functions)
 
 Consulta la documentación detallada y comandos en [supabase/README.md](file:///Users/stringbuilder/staffapp/supabase/README.md).
