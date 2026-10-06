@@ -134,6 +134,21 @@ legend {
   text-align: left;
 }
 
+.point-option.current,
+.point-option.previous {
+  border-color: var(--fg);
+}
+
+.point-option.current::after {
+  content: ' · actual';
+  color: var(--muted);
+}
+
+.point-option.previous::after {
+  content: ' · la última vez';
+  color: var(--muted);
+}
+
 .point {
   display: flex;
   align-items: center;

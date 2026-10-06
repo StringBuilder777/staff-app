@@ -46,7 +46,11 @@ sale de ella. Un Android sin la app abre la ficha de la app en Google Play.
 
 ## Usarla en el iPhone
 
-1. Abre la página en Safari, entra con tu cuenta de staff y elige el punto.
+1. Abre la página en Safari, entra con tu cuenta de staff y elige el evento y
+   el punto. La sesión se queda guardada. El punto se recuerda mientras se
+   usa: al abrir la página sin tarjeta, o si pasan dos horas sin registrar
+   nada en él (otro turno, otro día), vuelve a preguntarlo con el de antes
+   marcado.
 2. Con la pantalla desbloqueada, acerca la tarjeta a la parte de arriba del
    iPhone.
 3. Toca el aviso «Abrir en Safari». La página registra el acceso y muestra a

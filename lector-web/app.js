@@ -50,6 +50,11 @@ const REQUEST_TIMEOUT_MS = 15 * 1000;
 // Acercar dos veces seguidas la misma tarjeta no la manda dos veces.
 const REPEAT_MS = 10 * 1000;
 
+// El punto elegido caduca tras dos horas sin registrar nada en él: en el
+// siguiente turno o al día siguiente se vuelve a elegir, para no registrar a
+// nadie en el punto de antes.
+const POINT_IDLE_MS = 2 * 60 * 60 * 1000;
+
 const $ = (id) => document.getElementById(id);
 
 function readJson(storage, key) {
@@ -185,10 +190,35 @@ function pointFrom(event, code) {
   return point ? { event, code: point[0], label: point[1] } : null;
 }
 
-/** Punto elegido, con su evento y su etiqueta, o null. */
-function savedPoint() {
+/** Último punto elegido, aunque haya caducado, o null. */
+function lastPoint() {
   const saved = readJson(localStorage, POINT_KEY);
-  return saved ? pointFrom(saved.event, saved.code) : null;
+  const point = saved ? pointFrom(saved.event, saved.code) : null;
+  return point ? { ...point, usedAt: saved.usedAt } : null;
+}
+
+/** Punto elegido si sigue vigente, con su evento y su etiqueta, o null. */
+function savedPoint() {
+  const point = lastPoint();
+  return point && Date.now() - point.usedAt < POINT_IDLE_MS ? point : null;
+}
+
+function savePoint(point) {
+  localStorage.setItem(
+    POINT_KEY,
+    JSON.stringify({ event: point.event, code: point.code, usedAt: Date.now() }),
+  );
+}
+
+/**
+ * Registrar en el punto elegido lo mantiene vigente. Uno caducado no revive:
+ * reintentar una tarjeta de ayer no debe valer para las de hoy.
+ */
+function touchPoint(point) {
+  const current = savedPoint();
+  if (current?.event === point.event && current.code === point.code) {
+    savePoint(point);
+  }
 }
 
 /**
@@ -260,8 +290,13 @@ function showResult(kind, title, detail = '') {
   result.replaceChildren(titleText, detailText);
 }
 
-/** Con [onlyEvent], solo los puntos del evento de la tarjeta que espera. */
+/**
+ * Con [onlyEvent], solo los puntos del evento de la tarjeta que espera. El
+ * último punto elegido sale marcado: como actual si sigue vigente.
+ */
 function showPoints(onlyEvent) {
+  const last = lastPoint();
+  const active = savedPoint() !== null;
   const list = $('point-list');
   list.replaceChildren();
   for (const [key, event] of Object.entries(EVENTS)) {
@@ -275,8 +310,20 @@ function showPoints(onlyEvent) {
       option.type = 'button';
       option.className = 'point-option';
       option.textContent = label;
+      if (last?.event === key && last.code === code) {
+        option.classList.add(active ? 'current' : 'previous');
+        option.setAttribute('aria-current', 'true');
+      }
       option.addEventListener('click', () => {
-        localStorage.setItem(POINT_KEY, JSON.stringify({ event: key, code }));
+        savePoint({ event: key, code });
+        // Si se pregunta por tarjetas que esperan, se registran donde se elija.
+        if (onlyEvent) {
+          savePending(
+            pendingCards().map((card) => {
+              return card.event === key ? { ...card, point: code } : card;
+            }),
+          );
+        }
         route();
       });
       group.append(option);
@@ -376,6 +423,7 @@ function serial(task) {
 async function send(card, point, renewed = false) {
   const event = EVENTS[card.event];
   sentAt.set(card.token, Date.now());
+  touchPoint(point);
   showResult('busy', 'Registrando…', point.label);
 
   let response;
@@ -481,7 +529,12 @@ function retry(entry) {
   });
 }
 
-async function route() {
+/**
+ * Con [menu], si no llega ninguna tarjeta se muestra el menú de puntos: al
+ * abrir la página se elige dónde se registra, que puede no ser donde se
+ * registró la última vez. Las tarjetas se registran en el punto elegido.
+ */
+async function route({ menu = false } = {}) {
   const card = takeCardFromUrl();
   const repeated = card !== null && sentRecently(card.token);
   if (card && !repeated) {
@@ -500,7 +553,7 @@ async function route() {
 
   const point = savedPoint();
   const [next] = pendingCards();
-  if (!point || (next && !pointOf(next))) {
+  if (!point || (next && !pointOf(next)) || (menu && !next)) {
     showPoints(next?.event);
     return;
   }
@@ -519,7 +572,7 @@ $('login-form').addEventListener('submit', async (event) => {
     const problem = await signIn($('email').value.trim(), $('password').value);
     if (problem === null) {
       $('password').value = '';
-      route();
+      route({ menu: true });
       return;
     }
     error.textContent = problem;
@@ -541,6 +594,11 @@ $('logout').addEventListener('click', () => {
 $('change-point').addEventListener('click', () => showPoints());
 
 // Safari puede reutilizar la pestaña y cambiar solo lo que va tras `#`.
-window.addEventListener('hashchange', route);
+window.addEventListener('hashchange', () => route());
 
-route();
+// Volver a una pestaña que Safari guardó entera cuenta como abrir la página.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) route({ menu: true });
+});
+
+route({ menu: true });
