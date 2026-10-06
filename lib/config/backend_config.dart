@@ -38,6 +38,16 @@ class BackendConfig {
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVvcGZvZWt4a2x1b3Rvd2lsemFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4OTM4ODgsImV4cCI6MjEwNDQ2OTg4OH0.UwlBEzKc1jhnZSamq-FqjjZakcpEAQyo3JD7gnD9848';
 
+  /// Dirección de la página de `lector-web/` ya publicada, por ejemplo
+  /// `https://staff-sitec.netlify.app`. Se fija al compilar con
+  /// `--dart-define=CARD_WEB_URL=...`. Con ella, las tarjetas se escriben con
+  /// esa dirección para que un iPhone sin la app las abra en Safari. Vacía,
+  /// se escriben como siempre.
+  ///
+  /// Queda grabada en cada tarjeta y las ya escritas siguen abriendo la que
+  /// tenían, así que conviene fijarla antes de escribir las de verdad.
+  static const String cardWebUrl = String.fromEnvironment('CARD_WEB_URL');
+
   /// Token JWT del usuario con rol staff/admin para autorizar peticiones.
   static String staffAuthToken = '';
 

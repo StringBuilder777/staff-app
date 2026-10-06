@@ -17,6 +17,8 @@ import 'package:staff_app/services/nfc_service.dart';
 const _hostApi = 'dev.flutter.pigeon.nfc_manager.HostApiPigeon.';
 const _flutterApi = 'dev.flutter.pigeon.nfc_manager.FlutterApiPigeon.';
 
+const _token = '0f8fad5b-d9cb-469f-a165-70867728950e';
+
 /// Lado nativo de `nfc_manager` en iOS: responde a la app y le manda los
 /// avisos de la hoja de lectura.
 class _FakeIosNfc {
@@ -38,6 +40,9 @@ class _FakeIosNfc {
   /// Argumentos de cada cierre pedido por la app: mensaje de éxito y de error.
   final invalidations = <List<Object?>>[];
   int writes = 0;
+
+  /// Mensajes que la app escribe en las tarjetas.
+  final written = <NdefMessagePigeon>[];
 
   /// Como en el plugin real, la sesión nativa solo se libera cuando la app la
   /// cierra, no cuando iOS cierra la hoja.
@@ -83,8 +88,9 @@ class _FakeIosNfc {
       invalidations.add(args);
       return [null];
     });
-    answer('ndefWriteNdef', (_) {
+    answer('ndefWriteNdef', (args) {
       writes++;
+      written.add(args[1]! as NdefMessagePigeon);
       return [null];
     });
   }
@@ -362,6 +368,53 @@ void main() {
     expect(result?.cancelled, isTrue);
     expect(nfc.availabilityChecks, 1);
     expect(nfc.begins, isEmpty);
+  }, variant: _iOS);
+
+  testWidgets('on iOS cards with the web address open without the app', (
+    tester,
+  ) async {
+    final nfc = _FakeIosNfc(tester)..install();
+
+    Future<NfcOperationResult> writeOn(TagPigeon card) async {
+      final result = const NfcService().writeTextPayload(
+        'staffapp:nfc:$_token',
+        webUrl: 'https://staff.test/#s/$_token',
+      );
+      await tester.pump();
+      await nfc.detect(card);
+      return result;
+    }
+
+    expect((await writeOn(_card())).success, isTrue);
+    final records = nfc.written.last.records;
+    // La dirección va primero: es lo único que mira el iPhone sin la app.
+    expect(records.map((record) => record.typeNameFormat), [
+      TypeNameFormatPigeon.wellKnown,
+      TypeNameFormatPigeon.external,
+    ]);
+    expect(records.first.payload, [
+      0x04,
+      ...utf8.encode('staff.test/#s/$_token'),
+    ]);
+
+    // Donde no cabe la dirección va solo el texto.
+    expect((await writeOn(_card(capacity: 100))).success, isTrue);
+    expect(nfc.written.last.records.single.type, [0x54]);
+
+    // Y la app lee la credencial de la tarjeta escrita con la dirección.
+    final read = const NfcService().readTextPayload();
+    await tester.pump();
+    await nfc.detect(
+      TagPigeon(
+        handle: 'tarjeta-1',
+        ndef: NdefPigeon(
+          status: NdefStatusPigeon.readWrite,
+          capacity: 137,
+          cachedNdefMessage: nfc.written.first,
+        ),
+      ),
+    );
+    expect((await read).payload, 'staffapp:nfc:$_token');
   }, variant: _iOS);
 
   // Va la última: si falla, deja una sesión abierta en el estado estático del

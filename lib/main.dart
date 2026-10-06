@@ -654,7 +654,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             }
 
                             final writeResult = await const NfcService()
-                                .writeTextPayload(payload);
+                                .writeTextPayload(
+                                  payload,
+                                  webUrl: NfcService.cardUrl(
+                                    payload,
+                                    event: NfcCardEvent.hackathon,
+                                  ),
+                                );
                             if (!sheetOpen || !modalContext.mounted) return;
                             if (!mounted) return;
                             if (writeResult.success) {
@@ -1207,7 +1213,13 @@ class _SitecRegistrationScreenState extends State<_SitecRegistrationScreen> {
                         }
 
                         final writeResult = await const NfcService()
-                            .writeTextPayload(payload);
+                            .writeTextPayload(
+                              payload,
+                              webUrl: NfcService.cardUrl(
+                                payload,
+                                event: NfcCardEvent.sitec,
+                              ),
+                            );
                         if (!sheetOpen || !modalContext.mounted) return;
                         if (writeResult.success) {
                           BackendConfig.lastIssuedNfcToken = res.nfcToken ?? '';
