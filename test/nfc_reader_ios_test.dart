@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -27,6 +28,9 @@ class _FakeIosNfc {
   bool readingAvailable = true;
   int availabilityChecks = 0;
 
+  /// Si lo hay, la respuesta a `readingAvailable` espera a que se complete.
+  Future<void>? availabilityDelay;
+
   /// Argumentos de cada apertura de la hoja: opciones de sondeo, texto de la
   /// hoja y si deja de buscar tarjetas tras la primera detección.
   final begins = <List<Object?>>[];
@@ -43,21 +47,28 @@ class _FakeIosNfc {
     final messenger = _tester.binding.defaultBinaryMessenger;
     // Pigeon responde `[valor]` si va bien y `[código, mensaje, detalles]` si
     // falla.
-    void answer(String method, List<Object?> Function(List<Object?> args) reply) {
+    void answer(
+      String method,
+      FutureOr<List<Object?>> Function(List<Object?> args) reply,
+    ) {
       messenger.setMockMessageHandler('$_hostApi$method', (message) async {
         final args =
             HostApiPigeon.pigeonChannelCodec.decodeMessage(message)
                 as List<Object?>? ??
             const [];
-        return HostApiPigeon.pigeonChannelCodec.encodeMessage(reply(args));
+        return HostApiPigeon.pigeonChannelCodec.encodeMessage(
+          await reply(args),
+        );
       });
       addTearDown(
         () => messenger.setMockMessageHandler('$_hostApi$method', null),
       );
     }
 
-    answer('tagSessionReadingAvailable', (_) {
+    answer('tagSessionReadingAvailable', (_) async {
       availabilityChecks++;
+      final delay = availabilityDelay;
+      if (delay != null) await delay;
       return [readingAvailable];
     });
     answer('tagSessionBegin', (args) {
@@ -322,6 +333,35 @@ void main() {
       ),
       findsWidgets,
     );
+  }, variant: _iOS);
+
+  // Si la hoja de escritura se cierra mientras el iPhone aún contesta si hay
+  // NFC, la hoja del sistema no debe abrirse después.
+  testWidgets('on iOS cancel stops a write that is still checking NFC', (
+    tester,
+  ) async {
+    final check = Completer<void>();
+    final nfc = _FakeIosNfc(tester)
+      ..availabilityDelay = check.future
+      ..install();
+
+    NfcOperationResult? result;
+    unawaited(
+      const NfcService()
+          .writeTextPayload('staffapp:nfc:abc')
+          .then((value) => result = value),
+    );
+    await tester.pump();
+    await const NfcService().cancel();
+    check.complete();
+    // Pasa el tiempo de espera entero: si la hoja llegara a abrirse, se cierra
+    // sola antes de comprobar nada y no deja una sesión abierta a la última
+    // prueba.
+    await tester.pump(NfcService.defaultTimeout);
+
+    expect(result?.cancelled, isTrue);
+    expect(nfc.availabilityChecks, 1);
+    expect(nfc.begins, isEmpty);
   }, variant: _iOS);
 
   // Va la última: si falla, deja una sesión abierta en el estado estático del

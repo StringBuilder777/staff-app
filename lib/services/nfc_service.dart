@@ -101,12 +101,26 @@ class NfcService {
   static Completer<NfcOperationResult>? _activeResult;
   static Completer<void>? _activeClosed;
 
+  /// Cuántas veces se ha llamado a [cancel]. Hasta registrarse en
+  /// [_activeResult], una operación compara esta cuenta con la que vio al
+  /// empezar: si cambió, la cancelaron mientras arrancaba y no abre el lector.
+  static int _cancelCount = 0;
+
   /// Cierra la sesión NFC en curso, si la hay, y espera a que el lector quede
-  /// libre. La operación pendiente se resuelve como cancelada.
+  /// libre. Las operaciones pendientes se resuelven como canceladas; las que
+  /// aún arrancaban, sin llegar a abrir el lector.
   ///
   /// Hay que llamarla al cerrar la pantalla o el sheet que inició la lectura o
   /// la escritura.
   Future<void> cancel() async {
+    _cancelCount++;
+    await _closeActiveSession();
+  }
+
+  /// Cierra la sesión abierta sin tocar las operaciones que aún arrancan. Es
+  /// lo que hace una operación nueva con la anterior: con [cancel] se
+  /// cancelaría también a sí misma.
+  Future<void> _closeActiveSession() async {
     final result = _activeResult;
     final closed = _activeClosed;
     if (result == null || closed == null) return;
@@ -278,13 +292,21 @@ class NfcService {
     required bool keepPollingIos,
     required Future<void> Function(NfcTag tag, _Complete complete) onTag,
   }) async {
+    // Hasta registrarse en `_activeResult`, `cancel()` no tiene sesión que
+    // cerrar: se mira tras cada espera si la cancelaron entretanto. Si no, el
+    // lector se abriría igual y la siguiente tarjeta dispararía esta operación.
+    final cancelCount = _cancelCount;
+    bool cancelledWhileStarting() => _cancelCount != cancelCount;
+
     final availabilityError = await _availabilityError();
+    if (cancelledWhileStarting()) return const NfcOperationResult.cancelled();
     if (availabilityError != null) {
       return NfcOperationResult.unavailable(availabilityError);
     }
 
     // El lector es único: una operación nueva invalida la que estuviera activa.
-    await cancel();
+    await _closeActiveSession();
+    if (cancelledWhileStarting()) return const NfcOperationResult.cancelled();
 
     final result = Completer<NfcOperationResult>();
     final closed = Completer<void>();
