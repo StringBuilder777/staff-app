@@ -29,6 +29,35 @@ void main() {
     expect(find.text('EVENTOS'), findsOneWidget);
   });
 
+  testWidgets('hackathon accesses are grouped by day', (tester) async {
+    // Pantalla alta: caben los dos días sin desplazar, y así se comparan sus
+    // posiciones.
+    tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
+    BackendConfig.mode = BackendMode.simulation;
+    await abrirHackathon(tester);
+    await tester.tap(find.text('EVENTOS'));
+    await tester.pumpAndSettle();
+
+    double top(String text) => tester.getTopLeft(find.text(text)).dy;
+
+    // El viernes la llegada y la cena; el sábado el desayuno, la comida y la
+    // salida.
+    const order = [
+      'VIERNES',
+      'CHECK-IN',
+      'CENA',
+      'SÁBADO',
+      'DESAYUNO',
+      'COMIDA',
+      'CHECK-OUT',
+    ];
+    for (var i = 1; i < order.length; i++) {
+      expect(top(order[i - 1]), lessThan(top(order[i])), reason: order[i]);
+    }
+  });
+
   testWidgets('shows participant data after an event NFC read', (tester) async {
     BackendConfig.mode = BackendMode.simulation;
     await abrirHackathon(tester);

@@ -246,7 +246,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: '02',
                 title: 'Eventos',
                 description:
-                    'Valida asistentes en check-in, comida y desayuno.',
+                    'Check-in y cena el viernes; desayuno, comida y check-out el sábado.',
                 glyph: DotGlyphs.nfc,
                 onTap: () async {
                   await Navigator.of(context).push(
@@ -731,29 +731,94 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 class EventsScreen extends StatelessWidget {
   const EventsScreen({super.key});
 
-  static const _events = [
-    _EventOption(
-      'Check-in',
-      'Registra la llegada del participante.',
-      Icons.login_rounded,
-      glyph: DotGlyphs.checkin,
-      code: 'checkin',
+  /// Accesos del hackathon final por día: el viernes la llegada y la cena; el
+  /// sábado el desayuno, la comida y la salida.
+  static const _days = [
+    (
+      'Viernes',
+      [
+        _EventOption(
+          'Check-in',
+          'Registra la llegada del participante.',
+          Icons.login_rounded,
+          glyph: DotGlyphs.checkin,
+          code: 'checkin',
+        ),
+        _EventOption(
+          'Cena',
+          'Valida una entrada a la cena.',
+          Icons.dinner_dining_outlined,
+          glyph: DotGlyphs.dinner,
+          code: 'cena',
+        ),
+      ],
     ),
-    _EventOption(
-      'Desayuno',
-      'Valida una entrada al desayuno.',
-      Icons.breakfast_dining_outlined,
-      glyph: DotGlyphs.breakfast,
-      code: 'desayuno',
-    ),
-    _EventOption(
-      'Comida',
-      'Valida una entrada a la comida.',
-      Icons.restaurant_outlined,
-      glyph: DotGlyphs.lunch,
-      code: 'comida',
+    (
+      'Sábado',
+      [
+        _EventOption(
+          'Desayuno',
+          'Valida una entrada al desayuno.',
+          Icons.breakfast_dining_outlined,
+          glyph: DotGlyphs.breakfast,
+          code: 'desayuno',
+        ),
+        _EventOption(
+          'Comida',
+          'Valida una entrada a la comida.',
+          Icons.restaurant_outlined,
+          glyph: DotGlyphs.lunch,
+          code: 'comida',
+        ),
+        _EventOption(
+          'Check-out',
+          'Registra la salida del participante.',
+          Icons.logout_rounded,
+          glyph: DotGlyphs.checkout,
+          code: 'checkout',
+        ),
+      ],
     ),
   ];
+
+  /// Una cabecera por día y, debajo, sus accesos numerados de corrido.
+  List<Widget> _accessCards(BuildContext context) {
+    final cards = <Widget>[];
+    var number = 0;
+    for (final (day, events) in _days) {
+      cards.add(
+        Reveal(
+          step: 3 + number,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 20, bottom: 4),
+            child: Text(day.toUpperCase(), style: Nothing.label),
+          ),
+        ),
+      );
+      for (final event in events) {
+        cards
+          ..add(
+            Reveal(
+              step: 3 + number,
+              child: _ActionCard(
+                index: '0${number + 1}',
+                title: event.name,
+                description: event.description,
+                glyph: event.glyph,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => EventScanScreen(event: event),
+                  ),
+                ),
+              ),
+            ),
+          )
+          ..add(RevealLine(step: 3 + number));
+        number++;
+      }
+    }
+    return cards;
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -795,25 +860,7 @@ class EventsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             const RevealLine(step: 3),
-            ..._events.indexed.expand(
-              (entry) => [
-                Reveal(
-                  step: 3 + entry.$1,
-                  child: _ActionCard(
-                    index: '0${entry.$1 + 1}',
-                    title: entry.$2.name,
-                    description: entry.$2.description,
-                    glyph: entry.$2.glyph,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => EventScanScreen(event: entry.$2),
-                      ),
-                    ),
-                  ),
-                ),
-                RevealLine(step: 3 + entry.$1),
-              ],
-            ),
+            ..._accessCards(context),
           ],
         ),
       ),

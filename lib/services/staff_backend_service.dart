@@ -11,8 +11,10 @@ class StaffParticipant {
   final String? nfcToken;
   final bool nfcActive;
   final String? checkinAt;
+  final String? dinnerAt;
   final String? breakfastAt;
   final String? lunchAt;
+  final String? checkoutAt;
 
   const StaffParticipant({
     required this.id,
@@ -21,8 +23,10 @@ class StaffParticipant {
     this.nfcToken,
     this.nfcActive = false,
     this.checkinAt,
+    this.dinnerAt,
     this.breakfastAt,
     this.lunchAt,
+    this.checkoutAt,
   });
 
   factory StaffParticipant.fromJson(Map<String, dynamic> json) {
@@ -33,8 +37,10 @@ class StaffParticipant {
       nfcToken: json['nfc_token']?.toString(),
       nfcActive: json['nfc_activa'] == true,
       checkinAt: json['checkin_en']?.toString(),
+      dinnerAt: json['cena_en']?.toString(),
       breakfastAt: json['desayuno_en']?.toString(),
       lunchAt: json['comida_en']?.toString(),
+      checkoutAt: json['checkout_en']?.toString(),
     );
   }
 
@@ -357,7 +363,8 @@ class StaffBackendService {
     }
   }
 
-  /// 3. Escanea una tarjeta NFC para registrar checkin, desayuno o comida
+  /// 3. Escanea una tarjeta NFC para registrar un acceso del hackathon:
+  /// checkin, cena, desayuno, comida o checkout
   Future<ScanNfcResult> scanNfc({
     required String nfcToken,
     required String accessType,
