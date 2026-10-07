@@ -25,8 +25,10 @@ export function sanitizeIntegrante(row: Record<string, unknown>): OperationalInt
     nfc_emitida_en: typeof row.nfc_emitida_en === 'string' ? row.nfc_emitida_en : null,
     nfc_ultimo_leido_en: typeof row.nfc_ultimo_leido_en === 'string' ? row.nfc_ultimo_leido_en : null,
     checkin_en: typeof row.checkin_en === 'string' ? row.checkin_en : null,
+    cena_en: typeof row.cena_en === 'string' ? row.cena_en : null,
     desayuno_en: typeof row.desayuno_en === 'string' ? row.desayuno_en : null,
     comida_en: typeof row.comida_en === 'string' ? row.comida_en : null,
+    checkout_en: typeof row.checkout_en === 'string' ? row.checkout_en : null,
   };
 }
 

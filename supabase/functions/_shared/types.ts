@@ -5,9 +5,17 @@
 
 export type UserRole = 'staff' | 'admin' | string;
 
-export type AccessType = 'checkin' | 'desayuno' | 'comida';
+// Hackathon final: el viernes check-in y cena; el sábado desayuno, comida y
+// check-out.
+export type AccessType = 'checkin' | 'cena' | 'desayuno' | 'comida' | 'checkout';
 
-export const VALID_ACCESS_TYPES: readonly AccessType[] = ['checkin', 'desayuno', 'comida'] as const;
+export const VALID_ACCESS_TYPES: readonly AccessType[] = [
+  'checkin',
+  'cena',
+  'desayuno',
+  'comida',
+  'checkout',
+] as const;
 
 export function isValidAccessType(value: unknown): value is AccessType {
   return typeof value === 'string' && (VALID_ACCESS_TYPES as readonly string[]).includes(value);
@@ -49,8 +57,10 @@ export interface OperationalIntegrante {
   nfc_emitida_en: string | null;
   nfc_ultimo_leido_en: string | null;
   checkin_en: string | null;
+  cena_en: string | null;
   desayuno_en: string | null;
   comida_en: string | null;
+  checkout_en: string | null;
 }
 
 export interface TeamFromQrRequest {
