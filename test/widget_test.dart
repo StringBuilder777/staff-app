@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:staff_app/config/backend_config.dart';
 import 'package:staff_app/main.dart';
+import 'package:staff_app/services/staff_backend_service.dart';
 
 /// Arranca la app y entra al flujo del hackathon, que desde la incorporación
 /// de SITEC vive detrás de la pantalla de selección de evento.
@@ -44,6 +45,8 @@ void main() {
     expect(find.text('Ana Torres'), findsOneWidget);
     expect(find.text('Equipo Boreal'), findsOneWidget);
     expect(find.text('Acceso válido'), findsOneWidget);
+    // El kit es de SITEC: el hackathon no lo muestra.
+    expect(find.textContaining('KIT '), findsNothing);
   });
 
   testWidgets('registration screen shows simulation by default', (
@@ -132,10 +135,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Ana Torres'), findsOneWidget);
+    expect(find.text('KIT PREMIUM'), findsOneWidget);
+    // Con el kit, la fila de estado queda por debajo en la pantalla de prueba.
+    await tester.scrollUntilVisible(
+      find.text('Acceso válido'),
+      100,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('participant')),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Acceso válido'), findsOneWidget);
     expect(find.text('Equipo Boreal'), findsNothing);
     // Título de la barra y fila de evento del resultado.
     expect(find.text('Jueves · Entrada'), findsNWidgets(2));
+  });
+
+  test('SITEC kit labels from the database values', () {
+    expect(StaffBackendService.sitecKitLabel('premium'), 'Premium');
+    expect(StaffBackendService.sitecKitLabel('basico'), 'Básico');
+    expect(StaffBackendService.sitecKitLabel(' GENERAL '), 'General');
+    expect(StaffBackendService.sitecKitLabel(null), isNull);
+    expect(StaffBackendService.sitecKitLabel(''), isNull);
+    expect(StaffBackendService.sitecKitLabel(3), isNull);
+    // Un kit que la app no conoce se muestra tal cual en vez de ocultarlo.
+    expect(StaffBackendService.sitecKitLabel('vip'), 'vip');
   });
 
   testWidgets('SITEC registration finds an attendee and writes the card', (

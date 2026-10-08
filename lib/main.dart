@@ -1539,9 +1539,10 @@ class _EventScanScreenState extends State<EventScanScreen>
       setState(() {
         _participant = _ScannedParticipant(
           'Ana Torres',
-          // SITEC no tiene equipos.
+          // SITEC no tiene equipos, pero sí kit.
           widget.event.sitecDay == null ? 'Equipo Boreal' : null,
           'PART-00128',
+          kit: widget.event.sitecDay == null ? null : 'Premium',
         );
         _isDuplicate = false;
         _duplicateTimestamp = null;
@@ -1630,6 +1631,7 @@ class _EventScanScreenState extends State<EventScanScreen>
           res.participantName ?? 'Participante',
           res.teamName,
           res.participantId ?? token,
+          kit: res.kit,
         );
         _isDuplicate = false;
         _duplicateTimestamp = null;
@@ -1638,6 +1640,7 @@ class _EventScanScreenState extends State<EventScanScreen>
           res.participantName ?? 'Participante',
           res.teamName,
           'ACCESO-PREVIO',
+          kit: res.kit,
         );
         _isDuplicate = true;
         _duplicateTimestamp = res.previouslyRegisteredAt;
@@ -1779,13 +1782,17 @@ class _EventScanScreenState extends State<EventScanScreen>
     ],
   );
 
+  /// Código con el que se muestra un acceso duplicado. No es el 409 de HTTP:
+  /// en la puerta el duplicado es el 67.
+  static const _duplicateCode = '67';
+
   /// Resultado de la lectura.
   ///
   /// El código de respuesta es el protagonista: en la puerta se decide por él,
   /// y en cifra grande se lee de un vistazo desde lejos.
   Widget _participantCard() {
     final participant = _participant!;
-    final code = _isDuplicate ? '409' : 'OK';
+    final code = _isDuplicate ? _duplicateCode : 'OK';
     final caption = _isDuplicate ? 'Duplicado' : 'Acceso válido';
     final tone = _isDuplicate ? Nothing.accent : Nothing.ok;
 
@@ -1816,6 +1823,10 @@ class _EventScanScreenState extends State<EventScanScreen>
           const SizedBox(height: 6),
           Text(team, style: Nothing.body),
         ],
+        if (participant.kit case final kit?) ...[
+          const SizedBox(height: 14),
+          _KitBadge(kit),
+        ],
         const SizedBox(height: 24),
         const Hairline(),
         MetaRow('Evento', widget.event.title),
@@ -1825,7 +1836,7 @@ class _EventScanScreenState extends State<EventScanScreen>
         MetaRow(
           'Estado',
           // El literal 'Acceso válido' lo comprueba widget_test.dart.
-          _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
+          _isDuplicate ? 'Ya registrado ($_duplicateCode)' : 'Acceso válido',
           valueColor: tone,
         ),
         const Hairline(),
@@ -1883,12 +1894,47 @@ class _EventOption {
 }
 
 class _ScannedParticipant {
-  const _ScannedParticipant(this.name, this.team, this.credential);
+  const _ScannedParticipant(this.name, this.team, this.credential, {this.kit});
   final String name;
 
   /// Null en SITEC, que no tiene equipos.
   final String? team;
   final String credential;
+
+  /// Kit de SITEC (Premium, Básico o General). Null en el hackathon.
+  final String? kit;
+}
+
+/// Kit de SITEC bajo el nombre. Premium va en negro sólido y los demás con
+/// contorno, para distinguirlos de un vistazo en la fila de la comida.
+class _KitBadge extends StatelessWidget {
+  const _KitBadge(this.kit);
+
+  final String kit;
+
+  @override
+  Widget build(BuildContext context) {
+    final premium = kit == 'Premium';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: premium ? Nothing.ink : null,
+          border: Border.all(color: Nothing.ink, width: 1.5),
+        ),
+        child: Text(
+          'KIT ${kit.toUpperCase()}',
+          style: Nothing.meta.copyWith(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.6,
+            color: premium ? Nothing.surface : Nothing.ink,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Fila de operación. Sin tarjeta: número grande, glifo de puntos y separador,

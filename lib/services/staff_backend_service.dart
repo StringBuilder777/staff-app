@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -181,6 +182,10 @@ class ScanNfcResult {
   final String? participantName;
   final String? teamName;
   final String? participantId;
+
+  /// Kit del asistente de SITEC tal como se muestra: Premium, Básico o
+  /// General. Null en el hackathon y en quien no está en el registro de ventas.
+  final String? kit;
   final String? errorMessage;
 
   const ScanNfcResult({
@@ -193,6 +198,7 @@ class ScanNfcResult {
     this.participantName,
     this.teamName,
     this.participantId,
+    this.kit,
     this.errorMessage,
   });
 
@@ -443,6 +449,7 @@ class StaffBackendService {
           registeredAt: body['registeredAt']?.toString() ?? '',
           participantName: _sitecName(asistente),
           participantId: asistente?['id']?.toString() ?? '',
+          kit: sitecKitLabel(asistente?['kit']),
         );
       }
 
@@ -456,6 +463,7 @@ class StaffBackendService {
               body['previouslyRegisteredAt']?.toString() ?? '',
           errorMessage: body['error']?.toString() ?? 'Acceso ya registrado',
           participantName: _sitecName(asistente),
+          kit: sitecKitLabel(asistente?['kit']),
         );
       }
 
@@ -570,5 +578,18 @@ class StaffBackendService {
         .where((part) => part.isNotEmpty)
         .join(' ');
     return name.isEmpty ? 'Asistente' : name;
+  }
+
+  /// Kit de SITEC tal como se muestra. La base lo guarda en minúsculas y sin
+  /// acento; un valor que la app no conozca se muestra tal cual.
+  @visibleForTesting
+  static String? sitecKitLabel(Object? kit) {
+    if (kit is! String || kit.trim().isEmpty) return null;
+    return switch (kit.trim().toLowerCase()) {
+      'premium' => 'Premium',
+      'basico' => 'Básico',
+      'general' => 'General',
+      final otro => otro,
+    };
   }
 }
