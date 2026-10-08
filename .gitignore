@@ -48,3 +48,8 @@ app.*.map.json
 node_modules/
 pnpm-lock.yaml
 
+# Datos personales de asistentes: el CSV de ventas y el SQL que se genera con
+# sus nombres (supabase/scripts/sitec_kits_desde_csv.py).
+*.csv
+sitec_kits*.sql
+

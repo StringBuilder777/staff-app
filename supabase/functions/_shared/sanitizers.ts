@@ -51,6 +51,7 @@ export function sanitizeSitecAsistente(row: Record<string, unknown>): Operationa
     id: typeof row.id === 'string' ? row.id : String(row.id ?? ''),
     nombre: typeof row.nombre === 'string' ? row.nombre : '',
     apellidos: typeof row.apellidos === 'string' ? row.apellidos : null,
+    kit: typeof row.kit === 'string' ? row.kit : null,
     jueves_entrada_en: typeof row.jueves_entrada_en === 'string' ? row.jueves_entrada_en : null,
     jueves_comida_en: typeof row.jueves_comida_en === 'string' ? row.jueves_comida_en : null,
     jueves_salida_en: typeof row.jueves_salida_en === 'string' ? row.jueves_salida_en : null,

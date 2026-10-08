@@ -14,7 +14,7 @@ Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), 
 | **`staff-team-from-qr`** | `POST` | `/functions/v1/staff-team-from-qr` | Busca equipo por `qr_token` y devuelve sus integrantes con datos operativos. Nunca expone datos sensibles. |
 | **`staff-issue-nfc`** | `POST` | `/functions/v1/staff-issue-nfc` | Asigna o reactiva el `nfc_token` de un integrante y genera el payload exacto `staffapp:nfc:<token>`. |
 | **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin`, `desayuno` y `comida` atómicamente evitando duplicados (HTTP 409). |
-| **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida` y `viernes_comida`. No toca las tablas del hackathon. |
+| **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida` y `viernes_comida`. No toca las tablas del hackathon. El `asistente` de la respuesta lleva su `kit` (`premium`, `basico`, `general` o `null`). |
 | **`staff-sitec-asistentes`** | `POST` | `/functions/v1/staff-sitec-asistentes` | Lista a los asistentes de SITEC para el registro, en orden alfabético: `id`, `nombre`, `apellidos` y `nfc_emitida_en`. Nunca expone el token NFC. Exige el mismo permiso que los accesos de SITEC (`puede_escanear`). |
 | **`staff-sitec-issue-nfc`** | `POST` | `/functions/v1/staff-sitec-issue-nfc` | Emite la tarjeta de un asistente de SITEC en dos pasos: sin `written` reactiva su `nfc_token` y devuelve el payload `staffapp:nfc:<token>`; con `written: true` la app confirma que la escribió y se marca `nfc_emitida_en`. Exige el mismo permiso que los accesos de SITEC. |
 
@@ -85,9 +85,24 @@ npx supabase secrets set --project-ref uopfoekxkluotowilzaa \
 
 ---
 
+## Scripts de SITEC (se ejecutan a mano)
+
+No son migraciones: se pegan en Supabase → SQL Editor cuando hacen falta.
+
+- **Kits desde el CSV de ventas.** `scripts/sitec_kits_desde_csv.py` lee la hoja «Registro» exportada a CSV y genera dos SQL. El de revisión no cambia nada: cuenta las ventas que ya están en la tabla y lista a quién se daría de alta y qué asistentes no aparecen en ventas. El otro pone el kit (`premium`, `basico` o `general`) a cada asistente y da de alta, con su kit, a quien todavía no está. Busca por nombre completo sin distinguir mayúsculas, acentos ni espacios, así que se puede repetir con un CSV más reciente sin duplicar a nadie. Los SQL llevan los nombres de los asistentes: se generan fuera del repositorio.
+
+  ```bash
+  python3 supabase/scripts/sitec_kits_desde_csv.py --revisar ventas.csv > /tmp/sitec_kits_1_revisar.sql
+  python3 supabase/scripts/sitec_kits_desde_csv.py ventas.csv > /tmp/sitec_kits_2_aplicar.sql
+  ```
+
+- **Borrar los accesos de prueba.** `scripts/sitec_limpiar_accesos.sql` vacía las entradas, comidas y salidas registradas antes de una hora de corte, que por defecto es el momento en que se ejecuta. No toca asistentes, tarjetas ni kits. Con el evento ya empezado, cambia la hora de corte por la de inicio para no borrar accesos reales.
+
+---
+
 ## Ejecutar Pruebas y Verificación de Tipos
 
-El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 50 pruebas de integración/unitarias:
+El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 51 pruebas de integración/unitarias:
 
 ```bash
 # 1. Verificación de tipos estricta (sin 'any', TypeScript estricto)

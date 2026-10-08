@@ -125,6 +125,8 @@ export interface OperationalSitecAsistente {
   id: string;
   nombre: string;
   apellidos: string | null;
+  /** Kit comprado: 'premium', 'basico' o 'general'. null si no está en ventas. */
+  kit: string | null;
   jueves_entrada_en: string | null;
   jueves_comida_en: string | null;
   jueves_salida_en: string | null;

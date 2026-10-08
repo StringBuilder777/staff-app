@@ -49,6 +49,7 @@ export interface MockDatabaseState {
     id: string;
     nombre: string;
     apellidos?: string | null;
+    kit?: string | null;
     nfc_token?: string | null;
     nfc_activa?: boolean;
     nfc_ultimo_leido_en?: string | null;
@@ -150,6 +151,7 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         id: 'sitec-asis-1',
         nombre: 'Marta',
         apellidos: 'Ruiz',
+        kit: 'premium',
         nfc_token: '6f1c2a9e-4b7d-4e2a-9c3f-1a2b3c4d5e6f',
         nfc_activa: true,
         nfc_ultimo_leido_en: null,

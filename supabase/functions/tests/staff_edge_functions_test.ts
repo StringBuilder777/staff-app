@@ -604,6 +604,7 @@ async function runTests(): Promise<void> {
     assertEqual(data.accessType, 'jueves_entrada', 'accessType jueves_entrada');
     assertEqual(data.asistente.id, 'sitec-asis-1', 'Asistente ID');
     assertEqual(data.asistente.nombre, 'Marta', 'Asistente nombre');
+    assertEqual(data.asistente.kit, 'premium', 'Kit del asistente');
     assertEqual(data.asistente.jueves_entrada_en, data.registeredAt, 'Hora en el asistente');
 
     const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-1');
@@ -637,6 +638,22 @@ async function runTests(): Promise<void> {
     assertEqual(data2.status, 'duplicate', 'Status duplicate');
     assertEqual(data2.previouslyRegisteredAt, data1.registeredAt, 'Momento previo exacto');
     assertEqual(data2.asistente.id, 'sitec-asis-1', 'Asistente en duplicado');
+    assertEqual(data2.asistente.kit, 'premium', 'Kit en duplicado');
+  });
+
+  await test('Sin kit: Un asistente fuera del registro de ventas lleva kit null', async () => {
+    const dbState = createInitialMockDatabaseState();
+    delete dbState.sitec_asistentes[0].kit;
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffSitecScanNfc(
+      sitecScanRequest(SITEC_TOKEN, 'jueves_entrada'),
+      client
+    );
+    assertEqual(res.status, 200, 'HTTP Status 200');
+
+    const data = (await res.json()) as SitecScanNfcAcceptedResponse;
+    assertEqual(data.asistente.kit, null, 'kit null');
   });
 
   await test('Puntos independientes: Cada punto de cada día se registra en su propia columna', async () => {
