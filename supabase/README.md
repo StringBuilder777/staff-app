@@ -96,7 +96,11 @@ No son migraciones: se pegan en Supabase → SQL Editor cuando hacen falta.
   python3 supabase/scripts/sitec_kits_desde_csv.py ventas.csv > /tmp/sitec_kits_2_aplicar.sql
   ```
 
-- **Borrar los accesos de prueba.** `scripts/sitec_limpiar_accesos.sql` vacía las entradas, comidas y salidas registradas antes de una hora de corte, que por defecto es el momento en que se ejecuta. No toca asistentes, tarjetas ni kits. Con el evento ya empezado, cambia la hora de corte por la de inicio para no borrar accesos reales.
+  Quien aún no está en la hoja se suma con `--agregar "Nombre completo=kit"`, una vez por persona.
+
+- **Altas sueltas.** `scripts/sitec_agregar_asistentes.sql` da de alta, con su kit, a quien se inscribe después: se pega en el SQL Editor, se escribe ahí una fila por persona (nombre, apellidos y kit) y se ejecuta. Los nombres no se escriben en el archivo, que está en el repositorio. A quien ya está no lo duplica, solo le pone el kit.
+
+- **Borrar los accesos de un asistente de prueba.** `scripts/sitec_limpiar_accesos.sql` vacía las entradas, comidas y salidas de un solo asistente, buscado por nombre. Si el nombre no coincide con nadie o coincide con varios, no borra nada. No toca su tarjeta ni su kit, ni a nadie más.
 
 ---
 

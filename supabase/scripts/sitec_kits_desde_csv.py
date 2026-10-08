@@ -7,7 +7,8 @@
 El CSV es la hoja «Registro» de registro_ventas_kits_sitec2026 exportada tal
 cual: unas filas de título y después la cabecera (Folio, No. Control, Nombre
 completo, ..., Tipo de Kit, ...). Se lee en UTF-8 o, si no, en Windows-1252,
-que es como lo exporta Excel.
+que es como lo exporta Excel. Quien todavía no está en la hoja se suma con
+--agregar "Nombre completo=kit", una vez por persona.
 
 Los dos SQL se pegan en Supabase → SQL Editor, en ese orden. El de --revisar
 no cambia nada: cuenta las ventas que casan con un asistente que ya está, lista
@@ -27,6 +28,7 @@ El resumen (filas, kits, repetidos) sale por stderr para no mezclarse con él.
 
 from __future__ import annotations
 
+import argparse
 import csv
 import re
 import sys
@@ -108,8 +110,10 @@ def leer_ventas(texto: str) -> list[dict]:
     for fila in filas[cabecera + 1:]:
         if len(fila) <= max(i_folio, i_nombre, i_kit) or not fila[i_nombre].strip():
             continue
+        folio = fila[i_folio].strip()
         ventas.append({
-            'folio': fila[i_folio].strip(),
+            'folio': folio,
+            'origen': f'Folio {folio}' if folio else 'Fila sin folio',
             'nombre_completo': fila[i_nombre],
             'kit_csv': fila[i_kit],
         })
@@ -147,7 +151,10 @@ ventas_clave as (
   from ventas v
 ),
 tabla as (
-  select a.id, a.nombre, a.apellidos, {sql_clave('a.nombre', 'a.apellidos')} as clave
+  -- El kit por to_jsonb para que la revisión funcione aunque la columna aún
+  -- no exista.
+  select a.id, a.nombre, a.apellidos, to_jsonb(a) ->> 'kit' as kit,
+    {sql_clave('a.nombre', 'a.apellidos')} as clave
   from public.sitec_asistentes a
 )"""
 
@@ -157,10 +164,11 @@ def sql_revisar(asistentes: list[tuple], origen: str, resumen: str) -> str:
 -- Generado con supabase/scripts/sitec_kits_desde_csv.py desde {origen}.
 -- {resumen}.
 --
--- Pégalo en Supabase → SQL Editor. Si «sin venta» está vacío, o solo tiene
--- pruebas, ejecuta después el SQL que aplica. Si alguien de «sin venta» está
--- también en «nuevos» escrito de otra forma, quedaría duplicado: corrígelo
--- antes de aplicar.
+-- Pégalo en Supabase → SQL Editor. Si «sin venta y sin kit» está vacío, o
+-- solo tiene pruebas, ejecuta después el SQL que aplica. Si alguien de ese
+-- grupo está también en «nuevos» escrito de otra forma, quedaría duplicado:
+-- corrígelo antes de aplicar. «Sin venta, con kit» son altas sueltas que ya
+-- tienen su kit y no se tocan.
 {sql_ventas(asistentes)}
 select 'ya están: se les pone el kit' as grupo, count(*) as cuantos, null as quienes
 from ventas_clave v
@@ -172,11 +180,19 @@ select 'nuevos: se dan de alta', count(*),
 from ventas_clave v
 where not exists (select 1 from tabla t where t.clave = v.clave)
 union all
-select 'sin venta: se quedan sin kit', count(*),
+select 'sin venta y sin kit: se quedan sin kit', count(*),
   string_agg(btrim(t.nombre || ' ' || coalesce(t.apellidos, '')), ', '
              order by t.nombre, t.apellidos)
 from tabla t
-where not exists (select 1 from ventas_clave v where v.clave = t.clave);"""
+where t.kit is null
+  and not exists (select 1 from ventas_clave v where v.clave = t.clave)
+union all
+select 'sin venta, con kit: no se tocan', count(*),
+  string_agg(btrim(t.nombre || ' ' || coalesce(t.apellidos, '')), ', '
+             order by t.nombre, t.apellidos)
+from tabla t
+where t.kit is not null
+  and not exists (select 1 from ventas_clave v where v.clave = t.clave);"""
 
 
 def sql_aplicar(asistentes: list[tuple], origen: str, resumen: str) -> str:
@@ -227,29 +243,59 @@ group by kit
 order by kit nulls last;"""
 
 
+def leer_agregados(valores: list[str]) -> list[dict]:
+    """Personas de --agregar "Nombre completo=kit", como ventas sin folio."""
+    ventas = []
+    for valor in valores:
+        nombre_completo, _, kit = valor.rpartition('=')
+        if not nombre_completo.strip() or normalizar_kit(kit) is None:
+            sys.exit(f'--agregar «{valor}»: escribe "Nombre completo=kit" con kit '
+                     'premium, basico o general.')
+        ventas.append({
+            'folio': '',
+            'origen': f'--agregar «{nombre_completo.strip()}»',
+            'nombre_completo': nombre_completo,
+            'kit_csv': kit,
+        })
+    return ventas
+
+
 def main() -> None:
-    argumentos = sys.argv[1:]
-    revisar = '--revisar' in argumentos
-    rutas = [a for a in argumentos if a != '--revisar']
-    if len(rutas) != 1:
-        sys.exit(__doc__.split('\n\n')[1])
-    ruta = Path(rutas[0])
+    parser = argparse.ArgumentParser(
+        description='Genera el SQL que carga el kit de los asistentes de SITEC.')
+    parser.add_argument('csv', type=Path, help='CSV de la hoja «Registro» de ventas')
+    parser.add_argument('--revisar', action='store_true',
+                        help='SQL de solo lectura para revisar antes de aplicar')
+    parser.add_argument('--agregar', action='append', default=[],
+                        metavar='"NOMBRE COMPLETO=kit"',
+                        help='persona que aún no está en la hoja; se puede repetir')
+    args = parser.parse_args()
+    ruta = args.csv
 
     asistentes, vistos = [], {}
-    for venta in leer_ventas(leer_texto(ruta)):
+    for venta in leer_ventas(leer_texto(ruta)) + leer_agregados(args.agregar):
+        origen = venta['origen']
         nombre, apellidos = limpiar_nombre(venta['nombre_completo'])
         kit = normalizar_kit(venta['kit_csv'])
         if kit is None:
-            print(f'Folio {venta["folio"]}: kit «{venta["kit_csv"].strip()}» desconocido, '
+            print(f'{origen}: kit «{venta["kit_csv"].strip()}» desconocido, '
                   'se carga sin kit.', file=sys.stderr)
         k = clave(nombre, apellidos)
         if k in vistos:
             anterior = vistos[k]
+            if anterior['kit'] is None and kit is not None:
+                # La primera vez llegó sin kit válido: esta lo completa.
+                folio, *persona, _ = asistentes[anterior['indice']]
+                asistentes[anterior['indice']] = (folio, *persona, kit)
+                anterior['kit'] = kit
+                print(f'{origen}: completa el kit de {anterior["origen"]} con {kit}.',
+                      file=sys.stderr)
+                continue
             aviso = '' if anterior['kit'] == kit else f' ¡con otro kit ({kit})! Se queda {anterior["kit"]}'
-            print(f'Folio {venta["folio"]}: {nombre} {apellidos or ""} repite el folio '
-                  f'{anterior["folio"]}{aviso}; se omite.', file=sys.stderr)
+            print(f'{origen}: {nombre} {apellidos or ""} repite a {anterior["origen"]}'
+                  f'{aviso}; se omite.', file=sys.stderr)
             continue
-        vistos[k] = {'folio': venta['folio'], 'kit': kit}
+        vistos[k] = {'origen': origen, 'kit': kit, 'indice': len(asistentes)}
         asistentes.append((venta['folio'], nombre, apellidos, kit))
 
     if not asistentes:
@@ -262,7 +308,7 @@ def main() -> None:
         resumen += f', {cuenta[None]} sin kit'
     print(resumen + '.', file=sys.stderr)
 
-    generar = sql_revisar if revisar else sql_aplicar
+    generar = sql_revisar if args.revisar else sql_aplicar
     print(generar(asistentes, ruta.name, resumen))
 
 
