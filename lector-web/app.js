@@ -38,6 +38,12 @@ const EVENTS = {
 const CARD =
   /^#([sh])\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
+// Kits de SITEC, como los guarda la base (sitec_asistentes.kit).
+const KITS = { premium: 'Premium', basico: 'Básico', general: 'General' };
+
+// Un acceso duplicado se muestra como 67, igual que en la app.
+const DUPLICATE_CODE = '67';
+
 const SESSION_KEY = 'lector.sesion';
 const POINT_KEY = 'lector.punto';
 const PENDING_KEY = 'lector.tarjetas';
@@ -277,17 +283,26 @@ function show(view) {
   for (const id of ['login', 'points', 'scan']) $(id).hidden = id !== view;
 }
 
-/** Los nombres llegan del backend: van siempre como texto, nunca como HTML. */
-function showResult(kind, title, detail = '') {
-  const titleText = document.createElement('p');
-  titleText.className = 'title';
-  titleText.textContent = title;
-  const detailText = document.createElement('p');
-  detailText.className = 'detail';
-  detailText.textContent = detail;
+/**
+ * Los nombres llegan del backend: van siempre como texto, nunca como HTML.
+ * `badge` es el aviso grande de arriba y `kit`, el de SITEC (ver kitOf).
+ */
+function showResult(kind, title, detail = '', { badge, kit } = {}) {
+  const parts = [];
+  if (badge) parts.push(paragraph('badge', badge));
+  parts.push(paragraph('title', title));
+  if (kit) parts.push(paragraph(kit.premium ? 'kit premium' : 'kit', `Kit ${kit.label}`));
+  parts.push(paragraph('detail', detail));
   const result = $('result');
   result.className = `result ${kind}`;
-  result.replaceChildren(titleText, detailText);
+  result.replaceChildren(...parts);
+}
+
+function paragraph(className, text) {
+  const p = document.createElement('p');
+  p.className = className;
+  p.textContent = text;
+  return p;
 }
 
 /**
@@ -401,6 +416,30 @@ function personName(person) {
   return [person?.nombre, person?.apellidos].filter(Boolean).join(' ').trim();
 }
 
+/**
+ * Kit de SITEC tal como se muestra. La base lo guarda en minúsculas y sin
+ * acento; un valor que la página no conozca se muestra tal cual. El hackathon
+ * no tiene kits y no muestra nada.
+ */
+function kitOf(person) {
+  const kit = typeof person?.kit === 'string' ? person.kit.trim().toLowerCase() : '';
+  if (!kit) return null;
+  return { label: KITS[kit] ?? kit, premium: kit === 'premium' };
+}
+
+/** Hora local (13:05) de un instante ISO, o '' si no llega o no se entiende. */
+function clock(iso) {
+  if (typeof iso !== 'string') return '';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString('es-MX', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      });
+}
+
 // Los registros van de uno en uno, en el orden en que llegan.
 let queue = Promise.resolve();
 let busy = false;
@@ -462,19 +501,28 @@ async function send(card, point, renewed = false) {
     return true;
   }
 
-  const name = personName(event.person(body));
+  const person = event.person(body);
+  const name = personName(person);
+  const kit = kitOf(person);
   const team = body.equipo?.nombre;
   if (response.ok) {
     showResult(
       'ok',
       name || 'Acceso registrado',
       team ? `${point.label} · ${team}` : point.label,
+      { kit },
     );
   } else if (response.status === 409) {
+    // Un duplicado no es un error más: va en rojo, con su propio aviso y el
+    // mismo código que la app, y dice cuándo se registró la primera vez.
+    const time = clock(body.previouslyRegisteredAt);
     showResult(
-      'warn',
-      name || 'Ya registrado',
-      `Ya tenía registrado ${point.label}.`,
+      'dup',
+      name || 'Tarjeta ya registrada',
+      time
+        ? `Ya se registró en ${point.label} a las ${time}.`
+        : `Ya se registró en ${point.label}.`,
+      { badge: `${DUPLICATE_CODE} · Ya registrado`, kit },
     );
   } else if (response.status === 404) {
     showResult('error', 'Tarjeta no encontrada', 'No existe o está desactivada.');
