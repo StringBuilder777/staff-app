@@ -13,7 +13,7 @@ Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), 
 | :--- | :--- | :--- | :--- |
 | **`staff-team-from-qr`** | `POST` | `/functions/v1/staff-team-from-qr` | Busca equipo por `qr_token` y devuelve sus integrantes con datos operativos. Nunca expone datos sensibles. |
 | **`staff-issue-nfc`** | `POST` | `/functions/v1/staff-issue-nfc` | Asigna o reactiva el `nfc_token` de un integrante y genera el payload exacto `staffapp:nfc:<token>`. |
-| **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin`, `desayuno` y `comida` atómicamente evitando duplicados (HTTP 409). |
+| **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin` y `cena` (viernes) y de `desayuno`, `comida` y `checkout` (sábado) atómicamente evitando duplicados (HTTP 409). |
 | **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida` y `viernes_comida`. No toca las tablas del hackathon. El `asistente` de la respuesta lleva su `kit` (`premium`, `basico`, `general` o `null`). |
 | **`staff-sitec-asistentes`** | `POST` | `/functions/v1/staff-sitec-asistentes` | Lista a los asistentes de SITEC para el registro, en orden alfabético: `id`, `nombre`, `apellidos` y `nfc_emitida_en`. Nunca expone el token NFC. Exige el mismo permiso que los accesos de SITEC (`puede_escanear`). |
 | **`staff-sitec-issue-nfc`** | `POST` | `/functions/v1/staff-sitec-issue-nfc` | Emite la tarjeta de un asistente de SITEC en dos pasos: sin `written` reactiva su `nfc_token` y devuelve el payload `staffapp:nfc:<token>`; con `written: true` la app confirma que la escribió y se marca `nfc_emitida_en`. Exige el mismo permiso que los accesos de SITEC. |
@@ -106,7 +106,7 @@ No son migraciones: se pegan en Supabase → SQL Editor cuando hacen falta.
 
 ## Ejecutar Pruebas y Verificación de Tipos
 
-El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 51 pruebas de integración/unitarias:
+El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 52 pruebas de integración/unitarias:
 
 ```bash
 # 1. Verificación de tipos estricta (sin 'any', TypeScript estricto)
@@ -146,8 +146,10 @@ curl -i -X POST "https://uopfoekxkluotowilzaa.supabase.co/functions/v1/staff-tea
       "nfc_emitida_en": "2026-09-14T10:00:00.000Z",
       "nfc_ultimo_leido_en": null,
       "checkin_en": null,
+      "cena_en": null,
       "desayuno_en": null,
-      "comida_en": null
+      "comida_en": null,
+      "checkout_en": null
     }
   ]
 }
@@ -195,8 +197,10 @@ curl -i -X POST "https://uopfoekxkluotowilzaa.supabase.co/functions/v1/staff-sca
     "nfc_emitida_en": "2026-09-14T10:00:00.000Z",
     "nfc_ultimo_leido_en": "2026-09-14T14:30:00.000Z",
     "checkin_en": "2026-09-14T14:30:00.000Z",
+    "cena_en": null,
     "desayuno_en": null,
-    "comida_en": null
+    "comida_en": null,
+    "checkout_en": null
   },
   "equipo": {
     "id": "7b79a408-5dc6-490a-a0f1-4bbfebce6cf7",
@@ -234,8 +238,10 @@ curl -i -X POST "https://uopfoekxkluotowilzaa.supabase.co/functions/v1/staff-sca
     "nfc_emitida_en": "2026-09-14T10:00:00.000Z",
     "nfc_ultimo_leido_en": "2026-09-14T14:35:10.000Z",
     "checkin_en": "2026-09-14T14:30:00.000Z",
+    "cena_en": null,
     "desayuno_en": null,
-    "comida_en": null
+    "comida_en": null,
+    "checkout_en": null
   },
   "equipo": {
     "id": "7b79a408-5dc6-490a-a0f1-4bbfebce6cf7",

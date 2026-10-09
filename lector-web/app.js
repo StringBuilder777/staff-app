@@ -28,9 +28,11 @@ const EVENTS = {
     fn: 'staff-scan-nfc',
     person: (body) => body.participante,
     points: [
-      ['checkin', 'Check-in'],
-      ['desayuno', 'Desayuno'],
-      ['comida', 'Comida'],
+      ['checkin', 'Viernes · Check-in'],
+      ['cena', 'Viernes · Cena'],
+      ['desayuno', 'Sábado · Desayuno'],
+      ['comida', 'Sábado · Comida'],
+      ['checkout', 'Sábado · Check-out'],
     ],
   },
 };

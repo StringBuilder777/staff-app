@@ -179,6 +179,21 @@ class DotGlyphs {
     '00011100000',
   ];
 
+  /// Cena: campana de servir sobre el plato.
+  static const dinner = [
+    '00000000000',
+    '00000100000',
+    '00001110000',
+    '00011111000',
+    '00111111100',
+    '01111111110',
+    '01111111110',
+    '11111111111',
+    '00000000000',
+    '11111111111',
+    '00000000000',
+  ];
+
   /// Microchip: identidad del hackathon.
   static const chip = [
     '00100010100',

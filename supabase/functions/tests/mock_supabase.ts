@@ -33,6 +33,10 @@ export interface MockDatabaseState {
     desayuno_registrado_por?: string | null;
     comida_en?: string | null;
     comida_registrado_por?: string | null;
+    cena_en?: string | null;
+    cena_registrado_por?: string | null;
+    checkout_en?: string | null;
+    checkout_registrado_por?: string | null;
     // Sensitive fields to test that they are NEVER exposed:
     alergias?: string | null;
     telefono?: string | null;
@@ -119,6 +123,10 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         desayuno_registrado_por: null,
         comida_en: null,
         comida_registrado_por: null,
+        cena_en: null,
+        cena_registrado_por: null,
+        checkout_en: null,
+        checkout_registrado_por: null,
         // Sensitive data:
         alergias: 'Penicilina y nueces',
         telefono: '+528112345678',
@@ -141,6 +149,10 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         desayuno_registrado_por: null,
         comida_en: null,
         comida_registrado_por: null,
+        cena_en: null,
+        cena_registrado_por: null,
+        checkout_en: null,
+        checkout_registrado_por: null,
         alergias: 'Ninguna',
         telefono: '+528119876543',
         email: 'luis.herrera@example.com',

@@ -11,6 +11,7 @@ import {
 import { sanitizeEquipo, sanitizeIntegrante } from '../_shared/sanitizers.ts';
 import {
   isValidAccessType,
+  VALID_ACCESS_TYPES,
   type AccessType,
   type ScanNfcAcceptedResponse,
   type ScanNfcDuplicateResponse,
@@ -18,14 +19,23 @@ import {
 } from '../_shared/types.ts';
 
 interface AccessColumns {
-  timeCol: 'checkin_en' | 'desayuno_en' | 'comida_en';
-  staffCol: 'checkin_registrado_por' | 'desayuno_registrado_por' | 'comida_registrado_por';
+  timeCol: 'checkin_en' | 'cena_en' | 'desayuno_en' | 'comida_en' | 'checkout_en';
+  staffCol:
+    | 'checkin_registrado_por'
+    | 'cena_registrado_por'
+    | 'desayuno_registrado_por'
+    | 'comida_registrado_por'
+    | 'checkout_registrado_por';
 }
 
 const ACCESS_FIELD_MAP: Record<AccessType, AccessColumns> = {
   checkin: {
     timeCol: 'checkin_en',
     staffCol: 'checkin_registrado_por',
+  },
+  cena: {
+    timeCol: 'cena_en',
+    staffCol: 'cena_registrado_por',
   },
   desayuno: {
     timeCol: 'desayuno_en',
@@ -34,6 +44,10 @@ const ACCESS_FIELD_MAP: Record<AccessType, AccessColumns> = {
   comida: {
     timeCol: 'comida_en',
     staffCol: 'comida_registrado_por',
+  },
+  checkout: {
+    timeCol: 'checkout_en',
+    staffCol: 'checkout_registrado_por',
   },
 };
 
@@ -93,7 +107,7 @@ export async function handleStaffScanNfc(
 
     if (!isValidAccessType(body.accessType)) {
       return errorResponse(
-        'El campo accessType es inválido. Valores permitidos: checkin, desayuno, comida',
+        `El campo accessType es inválido. Valores permitidos: ${VALID_ACCESS_TYPES.join(', ')}`,
         400
       );
     }

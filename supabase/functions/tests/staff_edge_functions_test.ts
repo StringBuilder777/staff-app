@@ -479,6 +479,42 @@ async function runTests(): Promise<void> {
     assertEqual(resComidaDup.status, 409, 'Comida Duplicado Status 409');
   });
 
+  await test('Éxito: Cena del viernes y check-out del sábado', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const scan = (accessType: string) =>
+      handleStaffScanNfc(
+        new Request('http://localhost/functions/v1/staff-scan-nfc', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer jwt-staff-valid',
+          },
+          body: JSON.stringify({ nfcToken: 'valid-nfc-token-123', accessType }),
+        }),
+        client,
+      );
+
+    const resCena = await scan('cena');
+    assertEqual(resCena.status, 200, 'Cena Status 200');
+    const resCheckout = await scan('checkout');
+    assertEqual(resCheckout.status, 200, 'Check-out Status 200');
+
+    const dbInt = dbState.integrantes.find((i) => i.id === 'int-uuid-1');
+    assert(Boolean(dbInt?.cena_en), 'cena_en actualizado');
+    assertEqual(dbInt?.cena_registrado_por, 'staff-uuid-1', 'cena_registrado_por staff');
+    assert(Boolean(dbInt?.checkout_en), 'checkout_en actualizado');
+    assertEqual(
+      dbInt?.checkout_registrado_por,
+      'staff-uuid-1',
+      'checkout_registrado_por staff',
+    );
+
+    const resCheckoutDup = await scan('checkout');
+    assertEqual(resCheckoutDup.status, 409, 'Check-out Duplicado Status 409');
+  });
+
   await test('No encontrado: Token NFC no registrado devuelve 404', async () => {
     const dbState = createInitialMockDatabaseState();
     const client = createMockSupabaseClient(dbState);
