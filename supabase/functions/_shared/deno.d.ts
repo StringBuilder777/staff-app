@@ -37,6 +37,11 @@ declare module '@supabase/supabase-js' {
     select(columns?: string): PostgrestFilterBuilder<T>;
     eq(column: string, value: unknown): PostgrestFilterBuilder<T>;
     is(column: string, value: unknown): PostgrestFilterBuilder<T>;
+    order(
+      column: string,
+      options?: { ascending?: boolean; nullsFirst?: boolean }
+    ): PostgrestFilterBuilder<T>;
+    limit(count: number): PostgrestFilterBuilder<T>;
     single<R = Record<string, unknown>>(): Promise<PostgrestSingleResponse<R>>;
     maybeSingle<R = Record<string, unknown>>(): Promise<PostgrestSingleResponse<R>>;
   }

@@ -60,6 +60,8 @@ export function sanitizeSitecAsistente(row: Record<string, unknown>): Operationa
     viernes_entrada_en: typeof row.viernes_entrada_en === 'string' ? row.viernes_entrada_en : null,
     viernes_salida_en: typeof row.viernes_salida_en === 'string' ? row.viernes_salida_en : null,
     viernes_comida_en: typeof row.viernes_comida_en === 'string' ? row.viernes_comida_en : null,
+    viernes_comida_fin_en:
+      typeof row.viernes_comida_fin_en === 'string' ? row.viernes_comida_fin_en : null,
   };
 }
 

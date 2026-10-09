@@ -13,8 +13,8 @@ Backend serverless para la aplicación de Staff (lectura de QR y tarjetas NFC), 
 | :--- | :--- | :--- | :--- |
 | **`staff-team-from-qr`** | `POST` | `/functions/v1/staff-team-from-qr` | Busca equipo por `qr_token` y devuelve sus integrantes con datos operativos. Nunca expone datos sensibles. |
 | **`staff-issue-nfc`** | `POST` | `/functions/v1/staff-issue-nfc` | Asigna o reactiva el `nfc_token` de un integrante y genera el payload exacto `staffapp:nfc:<token>`. |
-| **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin` y `cena` (viernes) y de `desayuno`, `comida` y `checkout` (sábado) atómicamente evitando duplicados (HTTP 409). |
-| **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida` y `viernes_comida`. No toca las tablas del hackathon. El `asistente` de la respuesta lleva su `kit` (`premium`, `basico`, `general` o `null`). |
+| **`staff-scan-nfc`** | `POST` | `/functions/v1/staff-scan-nfc` | Registra accesos de `checkin` y `cena` (viernes) y de `desayuno`, `comida` y `checkout` (sábado) atómicamente evitando duplicados (HTTP 409). Con `accessType: "salida"` funciona como interruptor sobre `hackathon_salidas`: si la persona está dentro abre una salida y si está fuera la cierra con su regreso. La respuesta lleva `movimiento` (`salida` o `regreso`) y `salioEn`. Una segunda lectura en menos de 30 s es una doble lectura: devuelve 409 y no cambia nada. La app y el lector mandan un `lecturaId` (uuid) por lectura: si la respuesta se pierde y reintentan con el mismo id, se devuelve lo que ya se registró (`repetida: true`) en vez de alternar otra vez. |
+| **`staff-sitec-scan-nfc`** | `POST` | `/functions/v1/staff-sitec-scan-nfc` | Igual que `staff-scan-nfc`, pero para SITEC: valida contra `sitec_asistentes` los puntos `jueves_entrada`, `jueves_comida`, `jueves_salida`, `viernes_entrada`, `viernes_salida`, `viernes_comida` (inicio de la comida) y `viernes_comida_fin` (fin de la comida). No toca las tablas del hackathon. El `asistente` de la respuesta lleva su `kit` (`premium`, `basico`, `general` o `null`). |
 | **`staff-sitec-asistentes`** | `POST` | `/functions/v1/staff-sitec-asistentes` | Lista a los asistentes de SITEC para el registro, en orden alfabético: `id`, `nombre`, `apellidos` y `nfc_emitida_en`. Nunca expone el token NFC. Exige el mismo permiso que los accesos de SITEC (`puede_escanear`). |
 | **`staff-sitec-issue-nfc`** | `POST` | `/functions/v1/staff-sitec-issue-nfc` | Emite la tarjeta de un asistente de SITEC en dos pasos: sin `written` reactiva su `nfc_token` y devuelve el payload `staffapp:nfc:<token>`; con `written: true` la app confirma que la escribió y se marca `nfc_emitida_en`. Exige el mismo permiso que los accesos de SITEC. |
 
@@ -89,6 +89,8 @@ npx supabase secrets set --project-ref uopfoekxkluotowilzaa \
 
 No son migraciones: se pegan en Supabase → SQL Editor cuando hacen falta.
 
+- **Cambios del 2026-10-08 (cena, check-out y salidas del hackathon; fin de la comida del viernes de SITEC).** `scripts/hack_salidas_y_comida_viernes.sql` junta, en el orden en que hay que correrlas, las migraciones `20261007120000`, `20261008120000` y `20261008121000` y los permisos de lectura del panel de admin (bloques del 2026-10-04 y del 2026-10-08 de `database/alter.sql` del sitio). Es aditivo y se puede repetir. Se corre antes de desplegar `staff-scan-nfc` y `staff-sitec-scan-nfc` y de repartir la APK: sin la tabla `hackathon_salidas`, la salida responde 500, y sin la columna `viernes_comida_fin_en`, el fin de la comida también.
+
 - **Kits desde el CSV de ventas.** `scripts/sitec_kits_desde_csv.py` lee la hoja «Registro» exportada a CSV y genera dos SQL. El de revisión no cambia nada: cuenta las ventas que ya están en la tabla y lista a quién se daría de alta y qué asistentes no aparecen en ventas. El otro pone el kit (`premium`, `basico` o `general`) a cada asistente y da de alta, con su kit, a quien todavía no está. Busca por nombre completo sin distinguir mayúsculas, acentos ni espacios, así que se puede repetir con un CSV más reciente sin duplicar a nadie. Los SQL llevan los nombres de los asistentes: se generan fuera del repositorio.
 
   ```bash
@@ -100,13 +102,15 @@ No son migraciones: se pegan en Supabase → SQL Editor cuando hacen falta.
 
 - **Altas sueltas.** `scripts/sitec_agregar_asistentes.sql` da de alta, con su kit, a quien se inscribe después: se pega en el SQL Editor, se escribe ahí una fila por persona (nombre, apellidos y kit) y se ejecuta. Los nombres no se escriben en el archivo, que está en el repositorio. A quien ya está no lo duplica, solo le pone el kit.
 
+- **Borrar los accesos y salidas de un participante de prueba del hackathon.** `scripts/hack_limpiar_accesos.sql` hace lo mismo que el de SITEC para `integrantes`: vacía check-in, cena, desayuno, comida y check-out de un solo participante, buscado por nombre, y borra sus salidas. Si el nombre no coincide con nadie o coincide con varios, no borra nada. No toca su tarjeta, su equipo ni a nadie más. Va después de `hack_salidas_y_comida_viernes.sql`.
+
 - **Borrar los accesos de un asistente de prueba.** `scripts/sitec_limpiar_accesos.sql` vacía las entradas, comidas y salidas de un solo asistente, buscado por nombre. Si el nombre no coincide con nadie o coincide con varios, no borra nada. No toca su tarjeta ni su kit, ni a nadie más.
 
 ---
 
 ## Ejecutar Pruebas y Verificación de Tipos
 
-El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 52 pruebas de integración/unitarias:
+El proyecto cuenta con verificación estricta de TypeScript y una suite automatizada de 63 pruebas de integración/unitarias:
 
 ```bash
 # 1. Verificación de tipos estricta (sin 'any', TypeScript estricto)

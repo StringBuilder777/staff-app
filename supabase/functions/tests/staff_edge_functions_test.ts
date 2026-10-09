@@ -14,6 +14,8 @@ import type {
   IssueNfcResponse,
   ScanNfcAcceptedResponse,
   ScanNfcDuplicateResponse,
+  ScanNfcSalidaAcceptedResponse,
+  ScanNfcSalidaDuplicateResponse,
   SitecScanNfcAcceptedResponse,
   SitecScanNfcDuplicateResponse,
   SitecAsistentesResponse,
@@ -515,6 +517,315 @@ async function runTests(): Promise<void> {
     assertEqual(resCheckoutDup.status, 409, 'Check-out Duplicado Status 409');
   });
 
+  // --- Salida del hackathon: un interruptor, no un punto de una sola vez ---
+
+  function salidaRequest(): Request {
+    return new Request('http://localhost/functions/v1/staff-scan-nfc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer jwt-staff-valid',
+      },
+      body: JSON.stringify({ nfcToken: 'valid-nfc-token-123', accessType: 'salida' }),
+    });
+  }
+
+  /** Mueve la última salida de Ana al pasado, fuera de la ventana de doble lectura. */
+  function envejecerSalidas(dbState: ReturnType<typeof createInitialMockDatabaseState>): void {
+    const haceUnMinuto = new Date(Date.now() - 60_000).toISOString();
+    for (const salida of dbState.hackathon_salidas) {
+      salida.salio_en = new Date(Date.parse(salida.salio_en) - 120_000).toISOString();
+      if (salida.regreso_en) salida.regreso_en = haceUnMinuto;
+    }
+  }
+
+  await test('Salida: La primera lectura la abre y la siguiente registra el regreso', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const resSalida = await handleStaffScanNfc(salidaRequest(), client);
+    assertEqual(resSalida.status, 200, 'Salida Status 200');
+    const salida = (await resSalida.json()) as ScanNfcSalidaAcceptedResponse;
+    assertEqual(salida.status, 'accepted', 'Salida accepted');
+    assertEqual(salida.accessType, 'salida', 'accessType salida');
+    assertEqual(salida.movimiento, 'salida', 'Movimiento salida');
+    assertEqual(salida.salioEn, salida.registeredAt, 'salioEn es la hora de la lectura');
+    assertEqual(salida.participante.id, 'int-uuid-1', 'Participante');
+    assertEqual(salida.equipo?.nombre, 'Equipo Boreal', 'Equipo');
+
+    assertEqual(dbState.hackathon_salidas.length, 1, 'Una salida abierta');
+    const abierta = dbState.hackathon_salidas[0];
+    assertEqual(abierta.integrante_id, 'int-uuid-1', 'Salida de Ana');
+    assertEqual(abierta.salida_registrado_por, 'staff-uuid-1', 'salida_registrado_por staff');
+    assert(!abierta.regreso_en, 'Sigue fuera');
+    // La salida no gasta el check-in ni ningún otro punto.
+    assertEqual(dbState.integrantes[0].checkin_en, null, 'No tocó el check-in');
+
+    envejecerSalidas(dbState);
+    const salioEn = dbState.hackathon_salidas[0].salio_en;
+
+    const resRegreso = await handleStaffScanNfc(salidaRequest(), client);
+    assertEqual(resRegreso.status, 200, 'Regreso Status 200');
+    const regreso = (await resRegreso.json()) as ScanNfcSalidaAcceptedResponse;
+    assertEqual(regreso.movimiento, 'regreso', 'Movimiento regreso');
+    assertEqual(regreso.salioEn, salioEn, 'salioEn es la hora en que salió');
+
+    assertEqual(dbState.hackathon_salidas.length, 1, 'Cerró la misma salida');
+    assertEqual(dbState.hackathon_salidas[0].regreso_en, regreso.registeredAt, 'regreso_en guardado');
+    assertEqual(
+      dbState.hackathon_salidas[0].regreso_registrado_por,
+      'staff-uuid-1',
+      'regreso_registrado_por staff'
+    );
+  });
+
+  await test('Salida: Cada salida queda en el historial', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const movimientos: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const res = await handleStaffScanNfc(salidaRequest(), client);
+      assertEqual(res.status, 200, `Lectura ${i + 1} Status 200`);
+      movimientos.push(((await res.json()) as ScanNfcSalidaAcceptedResponse).movimiento);
+      envejecerSalidas(dbState);
+    }
+
+    assertEqual(movimientos.join(','), 'salida,regreso,salida', 'Alterna salida y regreso');
+    assertEqual(dbState.hackathon_salidas.length, 2, 'Dos salidas en el historial');
+    const abiertas = dbState.hackathon_salidas.filter((s) => !s.regreso_en);
+    assertEqual(abiertas.length, 1, 'Solo la última sigue abierta');
+  });
+
+  await test('Salida: Una doble lectura en segundos devuelve 409 y no cambia nada', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res1 = await handleStaffScanNfc(salidaRequest(), client);
+    assertEqual(res1.status, 200, 'Primera lectura 200');
+    const salida = (await res1.json()) as ScanNfcSalidaAcceptedResponse;
+
+    const res2 = await handleStaffScanNfc(salidaRequest(), client);
+    assertEqual(res2.status, 409, 'Doble lectura 409');
+    const dup = (await res2.json()) as ScanNfcSalidaDuplicateResponse;
+    assertEqual(dup.status, 'duplicate', 'Status duplicate');
+    assertEqual(dup.accessType, 'salida', 'accessType salida');
+    assertEqual(dup.movimiento, 'salida', 'Sigue fuera');
+    assertEqual(dup.previouslyRegisteredAt, salida.registeredAt, 'Hora de la salida');
+    assert(!dbState.hackathon_salidas[0].regreso_en, 'No registró un regreso');
+  });
+
+  await test('Salida concurrente: Si otro teléfono la abrió a la vez, devuelve 409 sin duplicarla', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+    // La consulta de esta lectura aún no veía la salida que abrió el otro teléfono.
+    const vistaPrevia = createMockSupabaseClient(createInitialMockDatabaseState());
+    const otraSalioEn = new Date(Date.now() - 1_000).toISOString();
+    dbState.hackathon_salidas.push({
+      id: 'salida-otro-telefono',
+      integrante_id: 'int-uuid-1',
+      salio_en: otraSalioEn,
+      salida_registrado_por: 'staff-uuid-2',
+      regreso_en: null,
+      regreso_registrado_por: null,
+    });
+
+    let primeraConsulta = true;
+    const from = client.from.bind(client);
+    client.from = ((table: string) => {
+      if (table === 'hackathon_salidas' && primeraConsulta) {
+        primeraConsulta = false;
+        return vistaPrevia.from(table);
+      }
+      return from(table);
+    }) as typeof client.from;
+
+    const res = await handleStaffScanNfc(salidaRequest(), client);
+    assertEqual(res.status, 409, 'HTTP Status 409');
+    const dup = (await res.json()) as ScanNfcSalidaDuplicateResponse;
+    assertEqual(dup.movimiento, 'salida', 'Movimiento salida');
+    assertEqual(dup.previouslyRegisteredAt, otraSalioEn, 'Hora de la otra salida');
+    assertEqual(dbState.hackathon_salidas.length, 1, 'No abrió otra salida');
+  });
+
+  await test('Regreso concurrente: Si otro teléfono ya lo registró, devuelve 409 con su hora', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+    const salioEn = new Date(Date.now() - 600_000).toISOString();
+    const otroRegresoEn = new Date(Date.now() - 1_000).toISOString();
+    dbState.hackathon_salidas.push({
+      id: 'salida-1',
+      integrante_id: 'int-uuid-1',
+      salio_en: salioEn,
+      salida_registrado_por: 'staff-uuid-1',
+      regreso_en: otroRegresoEn,
+      regreso_registrado_por: 'staff-uuid-2',
+    });
+    // La consulta de esta lectura aún la veía abierta.
+    const estadoPrevio = createInitialMockDatabaseState();
+    estadoPrevio.hackathon_salidas.push({
+      id: 'salida-1',
+      integrante_id: 'int-uuid-1',
+      salio_en: salioEn,
+      salida_registrado_por: 'staff-uuid-1',
+      regreso_en: null,
+      regreso_registrado_por: null,
+    });
+    const vistaPrevia = createMockSupabaseClient(estadoPrevio);
+
+    let primeraConsulta = true;
+    const from = client.from.bind(client);
+    client.from = ((table: string) => {
+      if (table === 'hackathon_salidas' && primeraConsulta) {
+        primeraConsulta = false;
+        return vistaPrevia.from(table);
+      }
+      return from(table);
+    }) as typeof client.from;
+
+    const res = await handleStaffScanNfc(salidaRequest(), client);
+    assertEqual(res.status, 409, 'HTTP Status 409');
+    const dup = (await res.json()) as ScanNfcSalidaDuplicateResponse;
+    assertEqual(dup.movimiento, 'regreso', 'Movimiento regreso');
+    assertEqual(dup.previouslyRegisteredAt, otroRegresoEn, 'Hora del otro regreso');
+    assertEqual(dbState.hackathon_salidas[0].regreso_registrado_por, 'staff-uuid-2', 'Conserva el regreso del otro');
+  });
+
+  function salidaConLectura(lecturaId: string): Request {
+    return new Request('http://localhost/functions/v1/staff-scan-nfc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer jwt-staff-valid',
+      },
+      body: JSON.stringify({ nfcToken: 'valid-nfc-token-123', accessType: 'salida', lecturaId }),
+    });
+  }
+
+  const LECTURA_1 = '11111111-1111-4111-8111-111111111111';
+  const LECTURA_2 = '22222222-2222-4222-8222-222222222222';
+
+  await test('Reintento: La misma lectura devuelve lo registrado y no vuelve a alternar', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res1 = await handleStaffScanNfc(salidaConLectura(LECTURA_1), client);
+    assertEqual(res1.status, 200, 'Salida 200');
+    assertEqual(dbState.hackathon_salidas[0].salida_lectura_id, LECTURA_1, 'Guarda el id de la lectura');
+
+    // La respuesta se perdió y la app reintenta pasada la ventana de doble lectura.
+    envejecerSalidas(dbState);
+    const salioEn = dbState.hackathon_salidas[0].salio_en;
+    const reintento = await handleStaffScanNfc(salidaConLectura(LECTURA_1), client);
+    assertEqual(reintento.status, 200, 'Reintento 200');
+    const dataReintento = (await reintento.json()) as ScanNfcSalidaAcceptedResponse;
+    assertEqual(dataReintento.movimiento, 'salida', 'Sigue siendo la salida');
+    assertEqual(dataReintento.repetida, true, 'Marcada como repetida');
+    assertEqual(dataReintento.salioEn, salioEn, 'Hora original de la salida');
+    assert(!dbState.hackathon_salidas[0].regreso_en, 'No registró un regreso');
+
+    const res2 = await handleStaffScanNfc(salidaConLectura(LECTURA_2), client);
+    assertEqual(res2.status, 200, 'Regreso 200');
+    assertEqual(((await res2.json()) as ScanNfcSalidaAcceptedResponse).movimiento, 'regreso', 'Regreso');
+
+    envejecerSalidas(dbState);
+    const reintentoRegreso = await handleStaffScanNfc(salidaConLectura(LECTURA_2), client);
+    assertEqual(reintentoRegreso.status, 200, 'Reintento del regreso 200');
+    const dataRegreso = (await reintentoRegreso.json()) as ScanNfcSalidaAcceptedResponse;
+    assertEqual(dataRegreso.movimiento, 'regreso', 'Sigue siendo el regreso');
+    assertEqual(dataRegreso.repetida, true, 'Regreso marcado como repetido');
+    assertEqual(dbState.hackathon_salidas.length, 1, 'No abrió otra salida');
+  });
+
+  await test('Reintento en paralelo: Si la misma lectura ya abrió la salida, devuelve esa', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+    // La otra petición con el mismo id escribió después de las consultas de esta.
+    const vistaPrevia = createMockSupabaseClient(createInitialMockDatabaseState());
+    const salioEn = new Date(Date.now() - 2_000).toISOString();
+    dbState.hackathon_salidas.push({
+      id: 'salida-paralela',
+      integrante_id: 'int-uuid-1',
+      salio_en: salioEn,
+      salida_registrado_por: 'staff-uuid-1',
+      salida_lectura_id: LECTURA_1,
+      regreso_en: null,
+      regreso_registrado_por: null,
+    });
+
+    let consultas = 0;
+    const from = client.from.bind(client);
+    client.from = ((table: string) => {
+      if (table === 'hackathon_salidas' && consultas < 4) {
+        consultas++;
+        return vistaPrevia.from(table);
+      }
+      return from(table);
+    }) as typeof client.from;
+
+    const res = await handleStaffScanNfc(salidaConLectura(LECTURA_1), client);
+    assertEqual(res.status, 200, 'HTTP Status 200');
+    const data = (await res.json()) as ScanNfcSalidaAcceptedResponse;
+    assertEqual(data.movimiento, 'salida', 'Movimiento salida');
+    assertEqual(data.repetida, true, 'Es la misma lectura');
+    assertEqual(data.salioEn, salioEn, 'Hora de la salida que ya se abrió');
+    assertEqual(dbState.hackathon_salidas.length, 1, 'No duplicó la salida');
+  });
+
+  await test('lecturaId sin formato uuid: Se ignora y la salida se registra como siempre', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffScanNfc(salidaConLectura('no-es-un-uuid'), client);
+    assertEqual(res.status, 200, 'HTTP Status 200');
+    assertEqual(dbState.hackathon_salidas.length, 1, 'Abrió la salida');
+    assert(!dbState.hackathon_salidas[0].salida_lectura_id, 'Sin id de lectura');
+  });
+
+  await test('Salida abierta antigua: Se cierra aunque haya otra cerrada posterior', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+    const horasAtras = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+    // Una corrección a mano dejó una abierta antigua y una cerrada más reciente.
+    dbState.hackathon_salidas.push(
+      {
+        id: 'salida-abierta-antigua',
+        integrante_id: 'int-uuid-1',
+        salio_en: horasAtras(3),
+        regreso_en: null,
+      },
+      {
+        id: 'salida-cerrada-reciente',
+        integrante_id: 'int-uuid-1',
+        salio_en: horasAtras(2),
+        regreso_en: horasAtras(1),
+      }
+    );
+
+    const res = await handleStaffScanNfc(salidaConLectura(LECTURA_1), client);
+    assertEqual(res.status, 200, 'HTTP Status 200');
+    const data = (await res.json()) as ScanNfcSalidaAcceptedResponse;
+    assertEqual(data.movimiento, 'regreso', 'Registra el regreso');
+    const antigua = dbState.hackathon_salidas.find((x) => x.id === 'salida-abierta-antigua');
+    assertEqual(antigua?.regreso_lectura_id, LECTURA_1, 'Cerró la salida abierta');
+  });
+
+  await test('Salida con tarjeta inactiva: Devuelve 404 y no abre ninguna salida', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const res = await handleStaffScanNfc(
+      new Request('http://localhost/functions/v1/staff-scan-nfc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer jwt-staff-valid' },
+        body: JSON.stringify({ nfcToken: 'inactive-nfc-token-456', accessType: 'salida' }),
+      }),
+      client
+    );
+    assertEqual(res.status, 404, 'HTTP Status 404');
+    assertEqual(dbState.hackathon_salidas.length, 0, 'Sin salidas');
+  });
+
   await test('No encontrado: Token NFC no registrado devuelve 404', async () => {
     const dbState = createInitialMockDatabaseState();
     const client = createMockSupabaseClient(dbState);
@@ -712,6 +1023,39 @@ async function runTests(): Promise<void> {
         `${accessType}_registrado_por staff`
       );
     }
+  });
+
+  await test('Viernes: El inicio y el fin de la comida son puntos distintos', async () => {
+    const dbState = createInitialMockDatabaseState();
+    const client = createMockSupabaseClient(dbState);
+
+    const resInicio = await handleStaffSitecScanNfc(
+      sitecScanRequest(SITEC_TOKEN, 'viernes_comida'),
+      client
+    );
+    assertEqual(resInicio.status, 200, 'Inicio de comida 200');
+
+    const resFin = await handleStaffSitecScanNfc(
+      sitecScanRequest(SITEC_TOKEN, 'viernes_comida_fin'),
+      client
+    );
+    assertEqual(resFin.status, 200, 'Fin de comida 200');
+    const fin = (await resFin.json()) as SitecScanNfcAcceptedResponse;
+    assertEqual(fin.asistente.viernes_comida_fin_en, fin.registeredAt, 'Hora del fin en el asistente');
+    assert(Boolean(fin.asistente.viernes_comida_en), 'Conserva la hora del inicio');
+
+    const asistente = dbState.sitec_asistentes.find((a) => a.id === 'sitec-asis-1');
+    assertEqual(
+      asistente?.viernes_comida_fin_registrado_por,
+      'staff-uuid-1',
+      'viernes_comida_fin_registrado_por staff'
+    );
+
+    const resFinDup = await handleStaffSitecScanNfc(
+      sitecScanRequest(SITEC_TOKEN, 'viernes_comida_fin'),
+      client
+    );
+    assertEqual(resFinDup.status, 409, 'Fin de comida duplicado 409');
   });
 
   await test('Compatibilidad de formato: Acepta token con prefijo staffapp:nfc:<token>', async () => {

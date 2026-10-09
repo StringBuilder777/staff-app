@@ -1,6 +1,9 @@
 -- SITEC: borra los accesos de UN asistente de prueba (entradas, comidas y
 -- salidas de los dos días) para que se pueda volver a registrar.
 --
+-- Necesita la columna del fin de la comida del viernes: corre antes
+-- hack_salidas_y_comida_viernes.sql.
+--
 -- No es una migración: se ejecuta a mano en Supabase → SQL Editor. Escribe el
 -- nombre del asistente, o una parte que solo tenga él, en la línea marcada y
 -- ejecútalo. No distingue mayúsculas, acentos ni espacios. Si el nombre
@@ -28,7 +31,8 @@ candidatos as (
         case when a.jueves_comida_en is not null then 'jueves comida' end,
         case when a.jueves_salida_en is not null then 'jueves salida' end,
         case when a.viernes_entrada_en is not null then 'viernes entrada' end,
-        case when a.viernes_comida_en is not null then 'viernes comida' end,
+        case when a.viernes_comida_en is not null then 'viernes inicio comida' end,
+        case when a.viernes_comida_fin_en is not null then 'viernes fin comida' end,
         case when a.viernes_salida_en is not null then 'viernes salida' end
       ) as accesos,
       btrim(regexp_replace(lower(translate(normalize(a.nombre || ' ' || coalesce(a.apellidos, ''), NFC),
@@ -61,6 +65,8 @@ limpiado as (
     viernes_entrada_registrado_por = null,
     viernes_comida_en = null,
     viernes_comida_registrado_por = null,
+    viernes_comida_fin_en = null,
+    viernes_comida_fin_registrado_por = null,
     viernes_salida_en = null,
     viernes_salida_registrado_por = null,
     nfc_ultimo_leido_en = null
