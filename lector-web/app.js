@@ -7,6 +7,17 @@
 // Auth, así que nadie más ve el token ni la sesión.
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config.js';
 
+// Salida del hackathon: la primera lectura marca a la persona fuera y la
+// siguiente, de vuelta. staff-scan-nfc responde con `movimiento`.
+const EXIT_POINT = 'salida';
+
+// Una lectura de la salida sin respuesta se reintenta con su mismo id durante
+// este tiempo (ver exitReadId); después, acercar la tarjeta es una lectura nueva.
+// Es corto a propósito: pasado un rato, quien acerca la tarjeta suele ir ya en
+// la otra dirección, y reutilizar el id le devolvería el movimiento anterior.
+const EXIT_RETRY_MS = 2 * 60 * 1000;
+const EXIT_READS_KEY = 'lector.salidas';
+
 // Mismos puntos y en el mismo orden que la app (lib/main.dart). La letra es la
 // que la app graba en la tarjeta (NfcCardEvent en lib/services/nfc_service.dart).
 const EVENTS = {
@@ -20,7 +31,9 @@ const EVENTS = {
       ['jueves_salida', 'Jueves · Salida'],
       ['viernes_entrada', 'Viernes · Entrada'],
       ['viernes_salida', 'Viernes · Salida'],
-      ['viernes_comida', 'Viernes · Comida'],
+      // viernes_comida es la columna de siempre: ahora es el inicio de la comida.
+      ['viernes_comida', 'Viernes · Inicio comida'],
+      ['viernes_comida_fin', 'Viernes · Fin comida'],
     ],
   },
   h: {
@@ -33,6 +46,8 @@ const EVENTS = {
       ['desayuno', 'Sábado · Desayuno'],
       ['comida', 'Sábado · Comida'],
       ['checkout', 'Sábado · Check-out'],
+      // No es de una sola vez: cada lectura alterna entre salida y regreso.
+      [EXIT_POINT, 'Viernes y sábado · Salida'],
     ],
   },
 };
@@ -71,6 +86,58 @@ function readJson(storage, key) {
   } catch {
     return null;
   }
+}
+
+// Lecturas de la salida ------------------------------------------------------
+
+/**
+ * Lecturas de la salida que se quedaron sin respuesta, por token, con el id
+ * que se mandó. Si la misma tarjeta se reintenta —con «Reintentar», volviendo a
+ * acercarla o tras recargar la página— va con el mismo id: si la primera sí se
+ * registró, el servidor devuelve ese resultado en vez de alternar otra vez. Van
+ * en localStorage y no en la pestaña: el iPhone puede abrir cada tarjeta en una
+ * pestaña nueva.
+ */
+function exitReads() {
+  const reads = readJson(localStorage, EXIT_READS_KEY);
+  if (!reads || typeof reads !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(reads).filter(
+      ([, read]) => typeof read?.id === 'string' && Date.now() - read.at < EXIT_RETRY_MS,
+    ),
+  );
+}
+
+function saveExitReads(reads) {
+  if (Object.keys(reads).length) {
+    localStorage.setItem(EXIT_READS_KEY, JSON.stringify(reads));
+  } else {
+    localStorage.removeItem(EXIT_READS_KEY);
+  }
+}
+
+/** Id de la lectura de esta tarjeta: el de la que quedó sin respuesta, o uno nuevo. */
+function exitReadId(token) {
+  const reads = exitReads();
+  reads[token] ??= { id: newReadId(), at: Date.now() };
+  saveExitReads(reads);
+  return reads[token].id;
+}
+
+/** El servidor respondió: ya se sabe qué pasó con la lectura. */
+function settleExitRead(token) {
+  const reads = exitReads();
+  delete reads[token];
+  saveExitReads(reads);
+}
+
+function newReadId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 // Sesión de staff -----------------------------------------------------------
@@ -463,6 +530,7 @@ function serial(task) {
 /** Registra la tarjeta en el punto. Devuelve false si hay que volver a entrar. */
 async function send(card, point, renewed = false) {
   const event = EVENTS[card.event];
+  const exit = point.code === EXIT_POINT;
   sentAt.set(card.token, Date.now());
   touchPoint(point);
   showResult('busy', 'Registrando…', point.label);
@@ -474,10 +542,12 @@ async function send(card, point, renewed = false) {
       sentAt.delete(card.token);
       return false;
     }
+    const payload = { nfcToken: card.token, accessType: point.code };
+    if (exit) payload.lecturaId = exitReadId(card.token);
     response = await request(`/functions/v1/${event.fn}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ nfcToken: card.token, accessType: point.code }),
+      body: JSON.stringify(payload),
     });
   } catch {
     fail(card, point, 'Sin conexión', 'Revisa la conexión y reintenta.');
@@ -503,16 +573,47 @@ async function send(card, point, renewed = false) {
     return true;
   }
 
+  // Con respuesta del servidor ya se sabe qué pasó con la lectura de la salida.
+  if (exit) settleExitRead(card.token);
+
   const person = event.person(body);
   const name = personName(person);
   const kit = kitOf(person);
   const team = body.equipo?.nombre;
-  if (response.ok) {
+  if (response.ok && exit) {
+    // En la salida el aviso dice hacia dónde va: fuera o de vuelta.
+    const back = body.movimiento === 'regreso';
+    const time = clock(body.salioEn);
+    const when = time ? (back ? `Había salido a las ${time}` : `Fuera desde las ${time}`) : '';
+    // Un reintento que ya se había registrado devuelve el resultado de entonces.
+    const replay = body.repetida
+      ? `Lectura repetida: ya se había registrado a las ${clock(body.registeredAt)}. Si va en la otra dirección, acerca la tarjeta en medio minuto.`
+      : '';
+    showResult(
+      'ok',
+      name || 'Salida registrada',
+      [when, team, replay].filter(Boolean).join(' · '),
+      { badge: back ? 'Regresó' : 'Salió' },
+    );
+  } else if (response.ok) {
     showResult(
       'ok',
       name || 'Acceso registrado',
       team ? `${point.label} · ${team}` : point.label,
       { kit },
+    );
+  } else if (response.status === 409 && exit) {
+    // La misma tarjeta se leyó hace unos segundos: no cambió nada.
+    const time = clock(body.previouslyRegisteredAt);
+    const back = body.movimiento === 'regreso';
+    const at = time ? ` a las ${time}` : '';
+    showResult(
+      'dup',
+      name || 'Tarjeta ya registrada',
+      back
+        ? `Su regreso se registró${at}. Si vuelve a salir, acerca la tarjeta en medio minuto.`
+        : `Su salida se registró${at}. Si ya regresó, acerca la tarjeta en medio minuto.`,
+      { badge: `${DUPLICATE_CODE} · Ya registrado` },
     );
   } else if (response.status === 409) {
     // Un duplicado no es un error más: va en rojo, con su propio aviso y el

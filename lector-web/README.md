@@ -57,7 +57,10 @@ sale de ella. Un Android sin la app abre la ficha de la app en Google Play.
    quién pertenece la tarjeta.
 
 Si falla la red o el servidor, la tarjeta queda en «Sin registrar» y se
-reintenta a mano, siempre en el punto donde se leyó. Esa lista es de la
+reintenta a mano, siempre en el punto donde se leyó. En la salida del
+hackathon, el reintento (o volver a acercar la tarjeta en los dos minutos
+siguientes) va con el mismo id de lectura: si la primera sí llegó, el servidor
+devuelve ese resultado y no marca a la persona al revés. Esa lista es de la
 pestaña: si se cierra o se recarga, vuelve a acercar la tarjeta. Una tarjeta
 que espera a que entres o elijas el punto caduca a los cinco minutos.
 
