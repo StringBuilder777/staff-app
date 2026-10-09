@@ -194,6 +194,22 @@ class DotGlyphs {
     '00000000000',
   ];
 
+  /// Salida del hackathon: una flecha que sale y otra que vuelve. Es el punto
+  /// que alterna: la primera lectura marca la salida y la siguiente, el regreso.
+  static const exit = [
+    '00000000000',
+    '00000001000',
+    '00000000100',
+    '01111111110',
+    '00000000100',
+    '00000001000',
+    '00010000000',
+    '00100000000',
+    '01111111110',
+    '00100000000',
+    '00010000000',
+  ];
+
   /// Microchip: identidad del hackathon.
   static const chip = [
     '00100010100',

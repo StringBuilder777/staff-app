@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:staff_app/config/backend_config.dart';
 import 'package:staff_app/main.dart';
 import 'package:staff_app/services/staff_backend_service.dart';
@@ -43,8 +47,8 @@ void main() {
 
     double top(String text) => tester.getTopLeft(find.text(text)).dy;
 
-    // El viernes la llegada y la cena; el sábado el desayuno, la comida y la
-    // salida.
+    // El viernes la llegada y la cena; el sábado el desayuno, la comida y el
+    // check-out. La salida vale los dos días y va al final.
     const order = [
       'VIERNES',
       'CHECK-IN',
@@ -53,6 +57,8 @@ void main() {
       'DESAYUNO',
       'COMIDA',
       'CHECK-OUT',
+      'VIERNES Y SÁBADO',
+      'SALIDA',
     ];
     for (var i = 1; i < order.length; i++) {
       expect(top(order[i - 1]), lessThan(top(order[i])), reason: order[i]);
@@ -76,6 +82,43 @@ void main() {
     expect(find.text('Acceso válido'), findsOneWidget);
     // El kit es de SITEC: el hackathon no lo muestra.
     expect(find.textContaining('KIT '), findsNothing);
+  });
+
+  testWidgets('hackathon exit marks the participant out', (tester) async {
+    BackendConfig.mode = BackendMode.simulation;
+    await abrirHackathon(tester);
+
+    await tester.tap(find.text('EVENTOS'));
+    await tester.pumpAndSettle();
+    // Es el último acceso de la lista.
+    await tester.scrollUntilVisible(find.text('SALIDA'), 200);
+    await tester.tap(find.text('SALIDA'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SIMULAR LECTURA NFC'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ana Torres'), findsOneWidget);
+    // Leyenda del resultado, aviso grande y fila de estado.
+    expect(find.text('SALIDA REGISTRADA'), findsOneWidget);
+    expect(find.text('SALIÓ'), findsOneWidget);
+    // Con el aviso grande, las filas quedan por debajo en la pantalla de prueba.
+    final resultado = find.descendant(
+      of: find.byKey(const ValueKey('participant')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Salió'),
+      100,
+      scrollable: resultado,
+    );
+    expect(find.text('Salió'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('FUERA DESDE'),
+      100,
+      scrollable: resultado,
+    );
+    expect(find.text('FUERA DESDE'), findsOneWidget);
+    expect(find.text('Acceso válido'), findsNothing);
   });
 
   testWidgets('registration screen shows simulation by default', (
@@ -130,6 +173,10 @@ void main() {
   testWidgets('SITEC days keep their own order of access points', (
     tester,
   ) async {
+    // Pantalla alta: caben los cuatro puntos del viernes sin desplazar.
+    tester.view.physicalSize = const Size(1080, 4000);
+    tester.view.devicePixelRatio = 2.625;
+    addTearDown(tester.view.reset);
     BackendConfig.mode = BackendMode.simulation;
     await abrirSitec(tester);
 
@@ -145,8 +192,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('VIERNES'));
     await tester.pumpAndSettle();
+    // El viernes la comida tiene inicio y fin, después de la salida.
     expect(top('ENTRADA'), lessThan(top('SALIDA')));
-    expect(top('SALIDA'), lessThan(top('COMIDA')));
+    expect(top('SALIDA'), lessThan(top('INICIO COMIDA')));
+    expect(top('INICIO COMIDA'), lessThan(top('FIN COMIDA')));
+    expect(find.text('COMIDA'), findsNothing);
   });
 
   testWidgets('SITEC access point reads NFC without a team', (tester) async {
@@ -178,6 +228,126 @@ void main() {
     expect(find.text('Equipo Boreal'), findsNothing);
     // Título de la barra y fila de evento del resultado.
     expect(find.text('Jueves · Entrada'), findsNWidgets(2));
+  });
+
+  group('hackathon exit responses', () {
+    StaffBackendService serviceAnswering(
+      int status,
+      Map<String, dynamic> body,
+    ) => StaffBackendService(
+      client: MockClient(
+        (request) async => http.Response(
+          jsonEncode(body),
+          status,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+
+    test('a return carries the movement and when they left', () async {
+      final service = serviceAnswering(200, {
+        'status': 'accepted',
+        'accessType': 'salida',
+        'movimiento': 'regreso',
+        'registeredAt': '2026-10-10T03:40:00.000Z',
+        'salioEn': '2026-10-10T02:10:00.000Z',
+        'participante': {'id': 'int-1', 'nombre': 'Ana'},
+        'equipo': {'id': 'eq-1', 'nombre': 'Equipo Boreal'},
+      });
+
+      final res = await service.scanNfc(nfcToken: 'tok', accessType: 'salida');
+
+      expect(res.success, isTrue);
+      expect(res.movimiento, 'regreso');
+      expect(res.salioEn, '2026-10-10T02:10:00.000Z');
+      expect(res.teamName, 'Equipo Boreal');
+      expect(res.repetida, isFalse);
+    });
+
+    test('a replayed read says so', () async {
+      final service = serviceAnswering(200, {
+        'status': 'accepted',
+        'accessType': 'salida',
+        'movimiento': 'salida',
+        'registeredAt': '2026-10-10T02:10:00.000Z',
+        'salioEn': '2026-10-10T02:10:00.000Z',
+        'repetida': true,
+        'participante': {'id': 'int-1', 'nombre': 'Ana'},
+        'equipo': null,
+      });
+
+      final res = await service.scanNfc(
+        nfcToken: 'tok',
+        accessType: 'salida',
+        lecturaId: '11111111-1111-4111-8111-111111111111',
+      );
+
+      expect(res.repetida, isTrue);
+      expect(res.registeredAt, '2026-10-10T02:10:00.000Z');
+    });
+
+    test('a double read keeps the last movement', () async {
+      final service = serviceAnswering(409, {
+        'status': 'duplicate',
+        'error': 'La salida de este participante se acaba de registrar',
+        'accessType': 'salida',
+        'movimiento': 'salida',
+        'previouslyRegisteredAt': '2026-10-10T02:10:00.000Z',
+        'participante': {'id': 'int-1', 'nombre': 'Ana'},
+        'equipo': null,
+      });
+
+      final res = await service.scanNfc(nfcToken: 'tok', accessType: 'salida');
+
+      expect(res.isDuplicate, isTrue);
+      expect(res.movimiento, 'salida');
+      expect(res.previouslyRegisteredAt, '2026-10-10T02:10:00.000Z');
+    });
+
+    test('the exit sends its read id and other accesses do not', () async {
+      final cuerpos = <Map<String, dynamic>>[];
+      final service = StaffBackendService(
+        client: MockClient((request) async {
+          cuerpos.add(jsonDecode(request.body) as Map<String, dynamic>);
+          return http.Response(
+            jsonEncode({
+              'status': 'accepted',
+              'registeredAt': '2026-10-10T02:10:00.000Z',
+              'participante': {'id': 'int-1', 'nombre': 'Ana'},
+              'equipo': null,
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+
+      await service.scanNfc(
+        nfcToken: 'tok',
+        accessType: 'salida',
+        lecturaId: '11111111-1111-4111-8111-111111111111',
+      );
+      await service.scanNfc(nfcToken: 'tok', accessType: 'checkin');
+
+      expect(cuerpos[0]['lecturaId'], '11111111-1111-4111-8111-111111111111');
+      expect(cuerpos[1].containsKey('lecturaId'), isFalse);
+    });
+
+    test('other accesses have no movement', () async {
+      final service = serviceAnswering(200, {
+        'status': 'accepted',
+        'accessType': 'checkin',
+        'registeredAt': '2026-10-09T16:00:00.000Z',
+        'participante': {'id': 'int-1', 'nombre': 'Ana'},
+        'equipo': {'id': 'eq-1', 'nombre': 'Equipo Boreal'},
+      });
+
+      final res = await service.scanNfc(nfcToken: 'tok', accessType: 'checkin');
+
+      expect(res.success, isTrue);
+      expect(res.movimiento, isNull);
+      expect(res.salioEn, isNull);
+    });
   });
 
   test('SITEC kit labels from the database values', () {

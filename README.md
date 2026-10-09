@@ -4,6 +4,8 @@ Aplicación Flutter para el personal de eventos.
 
 - Registro de equipo mediante QR y emisión individual de tarjetas NFC.
 - Validación de accesos del hackathon: check-in y cena el viernes; desayuno, comida y check-out el sábado.
+- Salidas del hackathon: la primera lectura en «Salida» marca a la persona fuera y la siguiente, de vuelta.
+- Accesos de SITEC por día; el viernes, la comida con inicio y fin.
 - Estados de interfaz simulados mientras se integran las APIs y el hardware NFC/QR.
 
 ## Ejecutar
