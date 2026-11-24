@@ -3,7 +3,9 @@
 Herramientas para el personal de eventos. En Android se usa la app Flutter y en iPhone se registran accesos desde Safari.
 
 - Registro de equipo mediante QR y emisión individual de tarjetas NFC.
-- Validación de accesos para check-in, desayuno y comida.
+- Validación de accesos del hackathon: check-in y cena el viernes; desayuno, comida y check-out el sábado.
+- Salidas del hackathon: la primera lectura en «Salida» marca a la persona fuera y la siguiente, de vuelta.
+- Accesos de SITEC por día; el viernes, la comida con inicio y fin.
 - Estados de interfaz simulados mientras se integran las APIs y el hardware NFC/QR.
 
 ## Ejecutar la app en Android
@@ -21,6 +23,10 @@ En iPhone, el flujo de registro de accesos se realiza en Safari sin instalar una
 3. Toca «Abrir en Safari» y confirma en pantalla que se registró el acceso.
 
 La implementación del lector web y las instrucciones para publicarlo están en `lector-web/README.md` de la rama `feat/iphone-web`. Para emitir tarjetas compatibles, la versión de la app que las graba se compila con `--dart-define=CARD_WEB_URL=<URL del lector>`.
+
+## iPhone sin la app
+
+El staff con iPhone puede registrar accesos sin instalar la app: las tarjetas llevan una dirección que el iPhone abre en Safari, en la página de [lector-web/](lector-web/README.md). Para escribir las tarjetas así, la app se compila con `--dart-define=CARD_WEB_URL=<dirección de la página>`.
 
 ## Backend (Supabase Edge Functions)
 

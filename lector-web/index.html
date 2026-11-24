@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex" />
+    <!-- Solo se carga el código de esta carpeta y solo se habla con el
+         proyecto de Supabase de la app. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; connect-src https://uopfoekxkluotowilzaa.supabase.co; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+    />
+    <title>Lector Staff</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script type="module" src="app.js"></script>
+  </head>
+  <body>
+    <header class="bar">
+      <span class="brand">LECTOR STAFF</span>
+      <button id="logout" class="link" type="button" hidden>Salir</button>
+    </header>
+
+    <main>
+      <section id="login" class="view" hidden>
+        <h1>Entra con tu cuenta de staff</h1>
+        <form id="login-form" novalidate>
+          <label>
+            Correo
+            <input id="email" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            Contraseña
+            <input
+              id="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </label>
+          <button id="login-button" class="primary" type="submit">Entrar</button>
+          <p id="login-error" class="error" role="alert" hidden></p>
+        </form>
+      </section>
+
+      <section id="points" class="view" hidden>
+        <h1>¿Dónde estás registrando?</h1>
+        <p id="points-hint" class="hint" hidden></p>
+        <div id="point-list"></div>
+      </section>
+
+      <section id="scan" class="view" hidden>
+        <p class="point">
+          <strong id="current-point"></strong>
+          <button id="change-point" class="link" type="button">Cambiar</button>
+        </p>
+        <div id="result" class="result" aria-live="polite"></div>
+        <div id="failed-block" hidden>
+          <p class="hint">
+            Sin registrar. Se reintentan en el punto donde se leyeron:
+          </p>
+          <ul id="failed" class="failed"></ul>
+        </div>
+        <p class="hint">
+          Con la pantalla desbloqueada, acerca la tarjeta a la parte de arriba
+          del iPhone y toca el aviso «Abrir en Safari».
+        </p>
+      </section>
+    </main>
+
+    <noscript>Esta página necesita JavaScript.</noscript>
+  </body>
+</html>

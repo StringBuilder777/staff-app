@@ -25,8 +25,10 @@ export function sanitizeIntegrante(row: Record<string, unknown>): OperationalInt
     nfc_emitida_en: typeof row.nfc_emitida_en === 'string' ? row.nfc_emitida_en : null,
     nfc_ultimo_leido_en: typeof row.nfc_ultimo_leido_en === 'string' ? row.nfc_ultimo_leido_en : null,
     checkin_en: typeof row.checkin_en === 'string' ? row.checkin_en : null,
+    cena_en: typeof row.cena_en === 'string' ? row.cena_en : null,
     desayuno_en: typeof row.desayuno_en === 'string' ? row.desayuno_en : null,
     comida_en: typeof row.comida_en === 'string' ? row.comida_en : null,
+    checkout_en: typeof row.checkout_en === 'string' ? row.checkout_en : null,
   };
 }
 
@@ -51,12 +53,15 @@ export function sanitizeSitecAsistente(row: Record<string, unknown>): Operationa
     id: typeof row.id === 'string' ? row.id : String(row.id ?? ''),
     nombre: typeof row.nombre === 'string' ? row.nombre : '',
     apellidos: typeof row.apellidos === 'string' ? row.apellidos : null,
+    kit: typeof row.kit === 'string' ? row.kit : null,
     jueves_entrada_en: typeof row.jueves_entrada_en === 'string' ? row.jueves_entrada_en : null,
     jueves_comida_en: typeof row.jueves_comida_en === 'string' ? row.jueves_comida_en : null,
     jueves_salida_en: typeof row.jueves_salida_en === 'string' ? row.jueves_salida_en : null,
     viernes_entrada_en: typeof row.viernes_entrada_en === 'string' ? row.viernes_entrada_en : null,
     viernes_salida_en: typeof row.viernes_salida_en === 'string' ? row.viernes_salida_en : null,
     viernes_comida_en: typeof row.viernes_comida_en === 'string' ? row.viernes_comida_en : null,
+    viernes_comida_fin_en:
+      typeof row.viernes_comida_fin_en === 'string' ? row.viernes_comida_fin_en : null,
   };
 }
 

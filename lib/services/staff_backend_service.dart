@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -11,8 +13,10 @@ class StaffParticipant {
   final String? nfcToken;
   final bool nfcActive;
   final String? checkinAt;
+  final String? dinnerAt;
   final String? breakfastAt;
   final String? lunchAt;
+  final String? checkoutAt;
 
   const StaffParticipant({
     required this.id,
@@ -21,8 +25,10 @@ class StaffParticipant {
     this.nfcToken,
     this.nfcActive = false,
     this.checkinAt,
+    this.dinnerAt,
     this.breakfastAt,
     this.lunchAt,
+    this.checkoutAt,
   });
 
   factory StaffParticipant.fromJson(Map<String, dynamic> json) {
@@ -33,8 +39,10 @@ class StaffParticipant {
       nfcToken: json['nfc_token']?.toString(),
       nfcActive: json['nfc_activa'] == true,
       checkinAt: json['checkin_en']?.toString(),
+      dinnerAt: json['cena_en']?.toString(),
       breakfastAt: json['desayuno_en']?.toString(),
       lunchAt: json['comida_en']?.toString(),
+      checkoutAt: json['checkout_en']?.toString(),
     );
   }
 
@@ -181,6 +189,21 @@ class ScanNfcResult {
   final String? participantName;
   final String? teamName;
   final String? participantId;
+
+  /// Kit del asistente de SITEC tal como se muestra: Premium, Básico o
+  /// General. Null en el hackathon y en quien no está en el registro de ventas.
+  final String? kit;
+
+  /// Solo en la salida del hackathon: 'salida' si la lectura lo marcó fuera,
+  /// 'regreso' si lo marcó de vuelta. En un duplicado, el último que quedó.
+  final String? movimiento;
+
+  /// Solo en la salida del hackathon aceptada: hora en que salió.
+  final String? salioEn;
+
+  /// Solo en la salida: la lectura era un reintento que ya se había
+  /// registrado, y el resultado es el de entonces.
+  final bool repetida;
   final String? errorMessage;
 
   const ScanNfcResult({
@@ -193,6 +216,10 @@ class ScanNfcResult {
     this.participantName,
     this.teamName,
     this.participantId,
+    this.kit,
+    this.movimiento,
+    this.salioEn,
+    this.repetida = false,
     this.errorMessage,
   });
 
@@ -202,6 +229,9 @@ class ScanNfcResult {
     required String participantName,
     required String teamName,
     required String participantId,
+    String? movimiento,
+    String? salioEn,
+    bool repetida = false,
   }) => ScanNfcResult(
     success: true,
     isDuplicate: false,
@@ -211,6 +241,9 @@ class ScanNfcResult {
     participantName: participantName,
     teamName: teamName,
     participantId: participantId,
+    movimiento: movimiento,
+    salioEn: salioEn,
+    repetida: repetida,
   );
 
   factory ScanNfcResult.duplicate({
@@ -219,6 +252,7 @@ class ScanNfcResult {
     required String errorMessage,
     required String participantName,
     required String teamName,
+    String? movimiento,
   }) => ScanNfcResult(
     success: false,
     isDuplicate: true,
@@ -228,6 +262,7 @@ class ScanNfcResult {
     errorMessage: errorMessage,
     participantName: participantName,
     teamName: teamName,
+    movimiento: movimiento,
   );
 
   factory ScanNfcResult.error({
@@ -357,18 +392,35 @@ class StaffBackendService {
     }
   }
 
-  /// 3. Escanea una tarjeta NFC para registrar checkin, desayuno o comida
+  /// Lo que se espera la respuesta de una lectura antes de darla por perdida.
+  /// Sin límite, una red que se queda colgada dejaría la pantalla esperando.
+  static const scanTimeout = Duration(seconds: 20);
+
+  /// 3. Escanea una tarjeta NFC para registrar un acceso del hackathon:
+  /// checkin, cena, desayuno, comida o checkout, o la salida, que alterna
+  /// entre marcarlo fuera y marcarlo de vuelta.
+  ///
+  /// [lecturaId] (solo en la salida) identifica la lectura: si la respuesta se
+  /// pierde y se reintenta con el mismo id, el servidor devuelve lo que ya
+  /// registró en vez de alternar otra vez.
   Future<ScanNfcResult> scanNfc({
     required String nfcToken,
     required String accessType,
+    String? lecturaId,
   }) async {
     try {
       final url = Uri.parse('${BackendConfig.functionsUrl}/staff-scan-nfc');
-      final response = await _client.post(
-        url,
-        headers: await _buildHeaders(),
-        body: jsonEncode({'nfcToken': nfcToken, 'accessType': accessType}),
-      );
+      final response = await _client
+          .post(
+            url,
+            headers: await _buildHeaders(),
+            body: jsonEncode({
+              'nfcToken': nfcToken,
+              'accessType': accessType,
+              'lecturaId': ?lecturaId,
+            }),
+          )
+          .timeout(scanTimeout);
 
       final Map<String, dynamic> body =
           jsonDecode(response.body) as Map<String, dynamic>;
@@ -383,6 +435,9 @@ class StaffBackendService {
           participantName: part?['nombre']?.toString() ?? 'Participante',
           teamName: team?['nombre']?.toString() ?? 'Equipo',
           participantId: part?['id']?.toString() ?? '',
+          movimiento: body['movimiento']?.toString(),
+          salioEn: body['salioEn']?.toString(),
+          repetida: body['repetida'] == true,
         );
       }
 
@@ -397,12 +452,19 @@ class StaffBackendService {
           errorMessage: body['error']?.toString() ?? 'Acceso ya registrado',
           participantName: part?['nombre']?.toString() ?? 'Participante',
           teamName: team?['nombre']?.toString() ?? 'Equipo',
+          movimiento: body['movimiento']?.toString(),
         );
       }
 
       return ScanNfcResult.error(
         statusCode: response.statusCode,
         errorMessage: body['error']?.toString() ?? 'Error al validar NFC',
+      );
+    } on TimeoutException {
+      return ScanNfcResult.error(
+        statusCode: 0,
+        errorMessage:
+            'El servidor no respondió a tiempo. Vuelve a acercar la tarjeta.',
       );
     } catch (e) {
       return ScanNfcResult.error(
@@ -443,6 +505,7 @@ class StaffBackendService {
           registeredAt: body['registeredAt']?.toString() ?? '',
           participantName: _sitecName(asistente),
           participantId: asistente?['id']?.toString() ?? '',
+          kit: sitecKitLabel(asistente?['kit']),
         );
       }
 
@@ -456,6 +519,7 @@ class StaffBackendService {
               body['previouslyRegisteredAt']?.toString() ?? '',
           errorMessage: body['error']?.toString() ?? 'Acceso ya registrado',
           participantName: _sitecName(asistente),
+          kit: sitecKitLabel(asistente?['kit']),
         );
       }
 
@@ -570,5 +634,18 @@ class StaffBackendService {
         .where((part) => part.isNotEmpty)
         .join(' ');
     return name.isEmpty ? 'Asistente' : name;
+  }
+
+  /// Kit de SITEC tal como se muestra. La base lo guarda en minúsculas y sin
+  /// acento; un valor que la app no conozca se muestra tal cual.
+  @visibleForTesting
+  static String? sitecKitLabel(Object? kit) {
+    if (kit is! String || kit.trim().isEmpty) return null;
+    return switch (kit.trim().toLowerCase()) {
+      'premium' => 'Premium',
+      'basico' => 'Básico',
+      'general' => 'General',
+      final otro => otro,
+    };
   }
 }

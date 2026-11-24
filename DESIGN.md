@@ -112,7 +112,7 @@ metadatos, estados— va sobre el fondo con separadores.
 Los números son identidad visual, no adorno.
 
 ```
-02        08         409
+02        08         67
 EVENTOS   EQUIPOS    DUPLICADO
 ```
 

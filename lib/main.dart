@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -246,7 +247,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: '02',
                 title: 'Eventos',
                 description:
-                    'Valida asistentes en check-in, comida y desayuno.',
+                    'Check-in y cena el viernes; desayuno, comida y check-out el sábado; salidas los dos días.',
                 glyph: DotGlyphs.nfc,
                 onTap: () async {
                   await Navigator.of(context).push(
@@ -654,7 +655,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                             }
 
                             final writeResult = await const NfcService()
-                                .writeTextPayload(payload);
+                                .writeTextPayload(
+                                  payload,
+                                  webUrl: NfcService.cardUrl(
+                                    payload,
+                                    event: NfcCardEvent.hackathon,
+                                  ),
+                                );
                             if (!sheetOpen || !modalContext.mounted) return;
                             if (!mounted) return;
                             if (writeResult.success) {
@@ -725,29 +732,107 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 class EventsScreen extends StatelessWidget {
   const EventsScreen({super.key});
 
-  static const _events = [
-    _EventOption(
-      'Check-in',
-      'Registra la llegada del participante.',
-      Icons.login_rounded,
-      glyph: DotGlyphs.checkin,
-      code: 'checkin',
+  /// Accesos del hackathon final por día: el viernes la llegada y la cena; el
+  /// sábado el desayuno, la comida y el check-out. La salida vale los dos días:
+  /// marca a quien sale del evento y, en la siguiente lectura, su regreso.
+  static const _days = [
+    (
+      'Viernes',
+      [
+        _EventOption(
+          'Check-in',
+          'Registra la llegada del participante.',
+          Icons.login_rounded,
+          glyph: DotGlyphs.checkin,
+          code: 'checkin',
+        ),
+        _EventOption(
+          'Cena',
+          'Valida una entrada a la cena.',
+          Icons.dinner_dining_outlined,
+          glyph: DotGlyphs.dinner,
+          code: 'cena',
+        ),
+      ],
     ),
-    _EventOption(
-      'Desayuno',
-      'Valida una entrada al desayuno.',
-      Icons.breakfast_dining_outlined,
-      glyph: DotGlyphs.breakfast,
-      code: 'desayuno',
+    (
+      'Sábado',
+      [
+        _EventOption(
+          'Desayuno',
+          'Valida una entrada al desayuno.',
+          Icons.breakfast_dining_outlined,
+          glyph: DotGlyphs.breakfast,
+          code: 'desayuno',
+        ),
+        _EventOption(
+          'Comida',
+          'Valida una entrada a la comida.',
+          Icons.restaurant_outlined,
+          glyph: DotGlyphs.lunch,
+          code: 'comida',
+        ),
+        _EventOption(
+          'Check-out',
+          'Registra que el participante se va al terminar.',
+          Icons.logout_rounded,
+          glyph: DotGlyphs.checkout,
+          code: 'checkout',
+        ),
+      ],
     ),
-    _EventOption(
-      'Comida',
-      'Valida una entrada a la comida.',
-      Icons.restaurant_outlined,
-      glyph: DotGlyphs.lunch,
-      code: 'comida',
+    (
+      'Viernes y sábado',
+      [
+        _EventOption(
+          'Salida',
+          'Marca a quien sale; en la siguiente lectura, su regreso.',
+          Icons.directions_walk_rounded,
+          glyph: DotGlyphs.exit,
+          code: _salidaCode,
+        ),
+      ],
     ),
   ];
+
+  /// Una cabecera por día y, debajo, sus accesos numerados de corrido.
+  List<Widget> _accessCards(BuildContext context) {
+    final cards = <Widget>[];
+    var number = 0;
+    for (final (day, events) in _days) {
+      cards.add(
+        Reveal(
+          step: 3 + number,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 20, bottom: 4),
+            child: Text(day.toUpperCase(), style: Nothing.label),
+          ),
+        ),
+      );
+      for (final event in events) {
+        cards
+          ..add(
+            Reveal(
+              step: 3 + number,
+              child: _ActionCard(
+                index: '0${number + 1}',
+                title: event.name,
+                description: event.description,
+                glyph: event.glyph,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => EventScanScreen(event: event),
+                  ),
+                ),
+              ),
+            ),
+          )
+          ..add(RevealLine(step: 3 + number));
+        number++;
+      }
+    }
+    return cards;
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -789,25 +874,7 @@ class EventsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             const RevealLine(step: 3),
-            ..._events.indexed.expand(
-              (entry) => [
-                Reveal(
-                  step: 3 + entry.$1,
-                  child: _ActionCard(
-                    index: '0${entry.$1 + 1}',
-                    title: entry.$2.name,
-                    description: entry.$2.description,
-                    glyph: entry.$2.glyph,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => EventScanScreen(event: entry.$2),
-                      ),
-                    ),
-                  ),
-                ),
-                RevealLine(step: 3 + entry.$1),
-              ],
-            ),
+            ..._accessCards(context),
           ],
         ),
       ),
@@ -1207,7 +1274,13 @@ class _SitecRegistrationScreenState extends State<_SitecRegistrationScreen> {
                         }
 
                         final writeResult = await const NfcService()
-                            .writeTextPayload(payload);
+                            .writeTextPayload(
+                              payload,
+                              webUrl: NfcService.cardUrl(
+                                payload,
+                                event: NfcCardEvent.sitec,
+                              ),
+                            );
                         if (!sheetOpen || !modalContext.mounted) return;
                         if (writeResult.success) {
                           BackendConfig.lastIssuedNfcToken = res.nfcToken ?? '';
@@ -1419,33 +1492,93 @@ const _sitecDays = [
       sitecDay: 'Jueves',
     ),
   ]),
-  _SitecDay('Viernes', 'Entrada, salida y comida.', DotGlyphs.friday, [
-    _EventOption(
-      'Entrada',
-      'Registra la llegada del asistente.',
-      Icons.login_rounded,
-      glyph: DotGlyphs.checkin,
-      code: 'viernes_entrada',
-      sitecDay: 'Viernes',
-    ),
-    _EventOption(
-      'Salida',
-      'Registra la salida del asistente.',
-      Icons.logout_rounded,
-      glyph: DotGlyphs.checkout,
-      code: 'viernes_salida',
-      sitecDay: 'Viernes',
-    ),
-    _EventOption(
-      'Comida',
-      'Valida una entrada a la comida.',
-      Icons.restaurant_outlined,
-      glyph: DotGlyphs.lunch,
-      code: 'viernes_comida',
-      sitecDay: 'Viernes',
-    ),
-  ]),
+  _SitecDay(
+    'Viernes',
+    'Entrada, salida, inicio y fin de comida.',
+    DotGlyphs.friday,
+    [
+      _EventOption(
+        'Entrada',
+        'Registra la llegada del asistente.',
+        Icons.login_rounded,
+        glyph: DotGlyphs.checkin,
+        code: 'viernes_entrada',
+        sitecDay: 'Viernes',
+      ),
+      _EventOption(
+        'Salida',
+        'Registra la salida del asistente.',
+        Icons.logout_rounded,
+        glyph: DotGlyphs.checkout,
+        code: 'viernes_salida',
+        sitecDay: 'Viernes',
+      ),
+      // viernes_comida es la columna de siempre: lo que marque un teléfono sin
+      // actualizar queda como inicio, que es lo que registraba.
+      _EventOption(
+        'Inicio comida',
+        'Registra que el asistente entra a comer.',
+        Icons.restaurant_outlined,
+        glyph: DotGlyphs.lunch,
+        code: 'viernes_comida',
+        sitecDay: 'Viernes',
+      ),
+      _EventOption(
+        'Fin comida',
+        'Registra que el asistente termina de comer.',
+        Icons.restaurant_outlined,
+        glyph: DotGlyphs.lunch,
+        code: 'viernes_comida_fin',
+        sitecDay: 'Viernes',
+      ),
+    ],
+  ),
 ];
+
+/// Código de la salida del hackathon. No es un acceso de una sola vez: cada
+/// lectura alterna entre marcar a la persona fuera y marcarla de vuelta.
+const _salidaCode = 'salida';
+
+/// Tras un resultado en la salida, la misma tarjeta no se vuelve a mandar en
+/// este tiempo: en Android el lector se rearma al momento y una tarjeta que se
+/// queda junto al teléfono se leería otra vez. Es la ventana de doble lectura
+/// del servidor (SALIDA_DOBLE_LECTURA_MS en staff-scan-nfc).
+const _salidaRelectura = Duration(seconds: 30);
+
+/// Una lectura de la salida sin respuesta se reintenta con su mismo id durante
+/// este tiempo; después, acercar la tarjeta es una lectura nueva. Es corto a
+/// propósito: pasado un rato, quien acerca la tarjeta suele ir ya en la otra
+/// dirección, y reutilizar el id le devolvería el movimiento anterior.
+const _salidaReintento = Duration(minutes: 2);
+
+/// Id único de una lectura (uuid v4), para que el servidor reconozca un
+/// reintento de la salida y no la alterne dos veces.
+String _nuevoIdDeLectura() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+}
+
+/// "21:05" en la hora del teléfono, para leer de un vistazo cuándo se registró
+/// algo; con el día delante ("08/10 21:05") si no fue hoy. Si la hora no se
+/// entiende, se muestra tal cual llegó.
+String _horaLocal(String iso) {
+  final parsed = DateTime.tryParse(iso);
+  if (parsed == null) return iso;
+  final local = parsed.toLocal();
+  final hoy = DateTime.now();
+  String dos(int n) => n.toString().padLeft(2, '0');
+  final hora = '${dos(local.hour)}:${dos(local.minute)}';
+  final esHoy =
+      local.year == hoy.year &&
+      local.month == hoy.month &&
+      local.day == hoy.day;
+  return esHoy ? hora : '${dos(local.day)}/${dos(local.month)} $hora';
+}
 
 class EventScanScreen extends StatefulWidget {
   const EventScanScreen({super.key, required this.event});
@@ -1472,6 +1605,25 @@ class _EventScanScreenState extends State<EventScanScreen>
   String? _unavailableMessage;
   bool _isDuplicate = false;
   String? _duplicateTimestamp;
+
+  /// Solo en la salida del hackathon: 'salida' o 'regreso', y a qué hora salió.
+  String? _movimiento;
+  String? _salioEn;
+
+  /// Si la lectura de la salida era un reintento que ya se había registrado,
+  /// la hora en que se registró.
+  String? _repetidaEn;
+
+  /// Lecturas de la salida que se quedaron sin respuesta (sin red, servidor
+  /// caído), por token. Si la misma tarjeta se vuelve a leer, va con el mismo
+  /// id: si la primera sí se registró, el servidor devuelve ese resultado en
+  /// vez de alternar otra vez.
+  final Map<String, ({String id, DateTime desde})> _salidaSinRespuesta = {};
+
+  /// Última tarjeta con resultado en la salida, para no volver a mandarla
+  /// mientras siga junto al teléfono.
+  ({String token, DateTime en})? _ultimaSalida;
+  DateTime? _avisoRelecturaEn;
   late final TextEditingController _tokenInputController;
 
   @override
@@ -1527,12 +1679,17 @@ class _EventScanScreenState extends State<EventScanScreen>
       setState(() {
         _participant = _ScannedParticipant(
           'Ana Torres',
-          // SITEC no tiene equipos.
+          // SITEC no tiene equipos, pero sí kit.
           widget.event.sitecDay == null ? 'Equipo Boreal' : null,
           'PART-00128',
+          kit: widget.event.sitecDay == null ? null : 'Premium',
         );
         _isDuplicate = false;
         _duplicateTimestamp = null;
+        final esSalida = widget.event.code == _salidaCode;
+        _movimiento = esSalida ? 'salida' : null;
+        _salioEn = esSalida ? DateTime.now().toIso8601String() : null;
+        _repetidaEn = null;
       });
       return;
     }
@@ -1601,15 +1758,72 @@ class _EventScanScreenState extends State<EventScanScreen>
   Future<void> _processToken(String token) async {
     _tokenInputController.text = token;
     final service = StaffBackendService();
+    final esSalida =
+        widget.event.sitecDay == null && widget.event.code == _salidaCode;
+
+    String? lecturaId;
+    if (esSalida) {
+      final ahora = DateTime.now();
+      final ultima = _ultimaSalida;
+      if (ultima != null &&
+          ultima.token == token &&
+          ahora.difference(ultima.en) < _salidaRelectura) {
+        // La misma tarjeta sigue junto al teléfono, o se volvió a acercar
+        // enseguida: no se manda otra vez. El plazo se renueva con cada
+        // relectura, así que solo vuelve a contar cuando lleva medio minuto
+        // retirada. Se avisa solo si la pantalla espera una tarjeta, y no en
+        // cada relectura.
+        _ultimaSalida = (token: token, en: ahora);
+        setState(() => _isLoading = false);
+        final aviso = _avisoRelecturaEn;
+        if (_participant == null &&
+            (aviso == null ||
+                ahora.difference(aviso) > const Duration(seconds: 5))) {
+          _avisoRelecturaEn = ahora;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Esta tarjeta se acaba de leer. Retírala y espera medio minuto para volver a leerla.',
+              ),
+            ),
+          );
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        return;
+      }
+      final pendiente = _salidaSinRespuesta[token];
+      final reintento =
+          pendiente != null &&
+          ahora.difference(pendiente.desde) < _salidaReintento;
+      lecturaId = reintento ? pendiente.id : _nuevoIdDeLectura();
+      _salidaSinRespuesta[token] = (
+        id: lecturaId,
+        desde: reintento ? pendiente.desde : ahora,
+      );
+    }
+
     // SITEC valida contra su propia tabla de asistentes, no contra integrantes.
     final res = widget.event.sitecDay == null
-        ? await service.scanNfc(nfcToken: token, accessType: widget.event.code)
+        ? await service.scanNfc(
+            nfcToken: token,
+            accessType: widget.event.code,
+            lecturaId: lecturaId,
+          )
         : await service.scanSitecNfc(
             nfcToken: token,
             accessType: widget.event.code,
           );
 
     if (!mounted) return;
+
+    // Con una respuesta del servidor ya se sabe qué pasó con la lectura. Sin
+    // red o con el servidor caído no: se queda pendiente con su id.
+    if (esSalida && res.statusCode > 0 && res.statusCode < 500) {
+      _salidaSinRespuesta.remove(token);
+      if (res.success || res.isDuplicate) {
+        _ultimaSalida = (token: token, en: DateTime.now());
+      }
+    }
 
     setState(() {
       _isLoading = false;
@@ -1618,17 +1832,25 @@ class _EventScanScreenState extends State<EventScanScreen>
           res.participantName ?? 'Participante',
           res.teamName,
           res.participantId ?? token,
+          kit: res.kit,
         );
         _isDuplicate = false;
         _duplicateTimestamp = null;
+        _movimiento = res.movimiento;
+        _salioEn = res.salioEn;
+        _repetidaEn = res.repetida ? res.registeredAt : null;
       } else if (res.isDuplicate) {
         _participant = _ScannedParticipant(
           res.participantName ?? 'Participante',
           res.teamName,
           'ACCESO-PREVIO',
+          kit: res.kit,
         );
         _isDuplicate = true;
         _duplicateTimestamp = res.previouslyRegisteredAt;
+        _movimiento = res.movimiento;
+        _salioEn = null;
+        _repetidaEn = null;
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1767,15 +1989,42 @@ class _EventScanScreenState extends State<EventScanScreen>
     ],
   );
 
+  /// Código con el que se muestra un acceso duplicado. No es el 409 de HTTP:
+  /// en la puerta el duplicado es el 67.
+  static const _duplicateCode = '67';
+
   /// Resultado de la lectura.
   ///
   /// El código de respuesta es el protagonista: en la puerta se decide por él,
   /// y en cifra grande se lee de un vistazo desde lejos.
   Widget _participantCard() {
     final participant = _participant!;
-    final code = _isDuplicate ? '409' : 'OK';
-    final caption = _isDuplicate ? 'Duplicado' : 'Acceso válido';
-    final tone = _isDuplicate ? Nothing.accent : Nothing.ok;
+    final code = _isDuplicate ? _duplicateCode : 'OK';
+    // En la salida el resultado dice hacia dónde va la persona.
+    final salida = switch (_movimiento) {
+      'salida' => 'Salió',
+      'regreso' => 'Regresó',
+      _ => null,
+    };
+    final caption = _isDuplicate
+        ? 'Duplicado'
+        : switch (_movimiento) {
+            'salida' => 'Salida registrada',
+            'regreso' => 'Regreso registrado',
+            _ => 'Acceso válido',
+          };
+    // Ámbar si la persona queda fuera, verde si está dentro: se distingue de
+    // un vistazo aunque no se lea el texto.
+    final tone = _isDuplicate
+        ? Nothing.accent
+        : (_movimiento == 'salida' ? Nothing.warn : Nothing.ok);
+    final glyph = _isDuplicate
+        ? DotGlyphs.cross
+        : switch (_movimiento) {
+            'salida' => DotGlyphs.checkout,
+            'regreso' => DotGlyphs.checkin,
+            _ => DotGlyphs.check,
+          };
 
     return ListView(
       key: const ValueKey('participant'),
@@ -1788,7 +2037,7 @@ class _EventScanScreenState extends State<EventScanScreen>
             const SizedBox(width: 18),
             Expanded(child: Text(caption.toUpperCase(), style: Nothing.label)),
             AnimatedDotMatrix(
-              _isDuplicate ? DotGlyphs.cross : DotGlyphs.check,
+              glyph,
               motion: DotMotion.reveal,
               dot: 3,
               gap: 1.5,
@@ -1796,6 +2045,13 @@ class _EventScanScreenState extends State<EventScanScreen>
             ),
           ],
         ),
+        if (salida != null && !_isDuplicate) ...[
+          const SizedBox(height: 18),
+          Text(
+            salida.toUpperCase(),
+            style: Nothing.display(44).copyWith(color: tone),
+          ),
+        ],
         const SizedBox(height: 24),
         // El nombre no va en mayúsculas: es el dato que más rápido hay que
         // leer y las versales lo empeoran.
@@ -1803,6 +2059,10 @@ class _EventScanScreenState extends State<EventScanScreen>
         if (participant.team case final team?) ...[
           const SizedBox(height: 6),
           Text(team, style: Nothing.body),
+        ],
+        if (participant.kit case final kit?) ...[
+          const SizedBox(height: 14),
+          _KitBadge(kit),
         ],
         const SizedBox(height: 24),
         const Hairline(),
@@ -1813,15 +2073,43 @@ class _EventScanScreenState extends State<EventScanScreen>
         MetaRow(
           'Estado',
           // El literal 'Acceso válido' lo comprueba widget_test.dart.
-          _isDuplicate ? 'Ya registrado (409)' : 'Acceso válido',
+          _isDuplicate
+              ? 'Ya registrado ($_duplicateCode)'
+              : (salida ?? 'Acceso válido'),
           valueColor: tone,
         ),
         const Hairline(),
+        if (!_isDuplicate && _salioEn != null) ...[
+          MetaRow(
+            _movimiento == 'regreso' ? 'Había salido' : 'Fuera desde',
+            _horaLocal(_salioEn!),
+          ),
+          const Hairline(),
+        ],
+        if (!_isDuplicate && _repetidaEn != null) ...[
+          const SizedBox(height: 20),
+          Notice(
+            label: 'Lectura repetida',
+            message:
+                'Esta lectura ya se había registrado a las ${_horaLocal(_repetidaEn!)}, '
+                'pero la respuesta no llegó. Si la persona va en la otra dirección, '
+                'vuelve a leer la tarjeta en medio minuto.',
+          ),
+        ],
         if (_isDuplicate && _duplicateTimestamp != null) ...[
           const SizedBox(height: 20),
           Notice(
             label: 'Registro previo',
-            message: 'Registrado previamente a las $_duplicateTimestamp',
+            message: switch (_movimiento) {
+              'salida' =>
+                'Su salida se registró a las ${_horaLocal(_duplicateTimestamp!)}. '
+                    'Si ya regresó, vuelve a leer la tarjeta en medio minuto.',
+              'regreso' =>
+                'Su regreso se registró a las ${_horaLocal(_duplicateTimestamp!)}. '
+                    'Si vuelve a salir, lee la tarjeta en medio minuto.',
+              _ =>
+                'Registrado previamente a las ${_horaLocal(_duplicateTimestamp!)}',
+            },
           ),
         ],
         const SizedBox(height: 24),
@@ -1871,12 +2159,47 @@ class _EventOption {
 }
 
 class _ScannedParticipant {
-  const _ScannedParticipant(this.name, this.team, this.credential);
+  const _ScannedParticipant(this.name, this.team, this.credential, {this.kit});
   final String name;
 
   /// Null en SITEC, que no tiene equipos.
   final String? team;
   final String credential;
+
+  /// Kit de SITEC (Premium, Básico o General). Null en el hackathon.
+  final String? kit;
+}
+
+/// Kit de SITEC bajo el nombre. Premium va en negro sólido y los demás con
+/// contorno, para distinguirlos de un vistazo en la fila de la comida.
+class _KitBadge extends StatelessWidget {
+  const _KitBadge(this.kit);
+
+  final String kit;
+
+  @override
+  Widget build(BuildContext context) {
+    final premium = kit == 'Premium';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: premium ? Nothing.ink : null,
+          border: Border.all(color: Nothing.ink, width: 1.5),
+        ),
+        child: Text(
+          'KIT ${kit.toUpperCase()}',
+          style: Nothing.meta.copyWith(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.6,
+            color: premium ? Nothing.surface : Nothing.ink,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Fila de operación. Sin tarjeta: número grande, glifo de puntos y separador,

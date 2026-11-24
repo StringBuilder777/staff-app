@@ -33,6 +33,10 @@ export interface MockDatabaseState {
     desayuno_registrado_por?: string | null;
     comida_en?: string | null;
     comida_registrado_por?: string | null;
+    cena_en?: string | null;
+    cena_registrado_por?: string | null;
+    checkout_en?: string | null;
+    checkout_registrado_por?: string | null;
     // Sensitive fields to test that they are NEVER exposed:
     alergias?: string | null;
     telefono?: string | null;
@@ -49,12 +53,23 @@ export interface MockDatabaseState {
     id: string;
     nombre: string;
     apellidos?: string | null;
+    kit?: string | null;
     nfc_token?: string | null;
     nfc_activa?: boolean;
     nfc_ultimo_leido_en?: string | null;
     // Datos que se carguen más adelante y nunca deben salir hacia la app:
     correo?: string | null;
     telefono?: string | null;
+    [key: string]: unknown;
+  }>;
+  /** Salidas del hackathon: una fila por salida; sin regreso_en, sigue fuera. */
+  hackathon_salidas: Array<{
+    id: string;
+    integrante_id: string;
+    salio_en: string;
+    salida_registrado_por?: string | null;
+    regreso_en?: string | null;
+    regreso_registrado_por?: string | null;
     [key: string]: unknown;
   }>;
 }
@@ -73,6 +88,8 @@ const SITEC_ACCESOS_VACIOS = {
   viernes_salida_registrado_por: null,
   viernes_comida_en: null,
   viernes_comida_registrado_por: null,
+  viernes_comida_fin_en: null,
+  viernes_comida_fin_registrado_por: null,
 };
 
 export function createInitialMockDatabaseState(): MockDatabaseState {
@@ -118,6 +135,10 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         desayuno_registrado_por: null,
         comida_en: null,
         comida_registrado_por: null,
+        cena_en: null,
+        cena_registrado_por: null,
+        checkout_en: null,
+        checkout_registrado_por: null,
         // Sensitive data:
         alergias: 'Penicilina y nueces',
         telefono: '+528112345678',
@@ -140,6 +161,10 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         desayuno_registrado_por: null,
         comida_en: null,
         comida_registrado_por: null,
+        cena_en: null,
+        cena_registrado_por: null,
+        checkout_en: null,
+        checkout_registrado_por: null,
         alergias: 'Ninguna',
         telefono: '+528119876543',
         email: 'luis.herrera@example.com',
@@ -150,6 +175,7 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         id: 'sitec-asis-1',
         nombre: 'Marta',
         apellidos: 'Ruiz',
+        kit: 'premium',
         nfc_token: '6f1c2a9e-4b7d-4e2a-9c3f-1a2b3c4d5e6f',
         nfc_activa: true,
         nfc_ultimo_leido_en: null,
@@ -167,6 +193,7 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         ...SITEC_ACCESOS_VACIOS,
       },
     ],
+    hackathon_salidas: [],
   };
 }
 
@@ -187,6 +214,8 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
         return db.integrantes;
       case 'sitec_asistentes':
         return db.sitec_asistentes;
+      case 'hackathon_salidas':
+        return db.hackathon_salidas;
       default:
         return [];
     }
@@ -196,12 +225,49 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
     recordsGetter: () => Array<Record<string, unknown>>,
     conditions: Array<(row: Record<string, unknown>) => boolean> = []
   ): PostgrestFilterBuilder<Record<string, unknown>[]> {
+    let orderBy: { column: string; ascending: boolean; nullsFirst?: boolean } | null = null;
+    let limitCount: number | null = null;
+
+    // Filtra, ordena y corta como lo haría PostgREST. Las horas ISO de la misma
+    // forma se ordenan bien como texto. Los null van como en Postgres: al final
+    // al subir y al principio al bajar, salvo que se pida otra cosa.
+    function resolveRows(): Array<Record<string, unknown>> {
+      let rows = recordsGetter().filter((row) => conditions.every((fn) => fn(row)));
+      if (orderBy) {
+        const { column, ascending } = orderBy;
+        const nullsFirst = orderBy.nullsFirst ?? !ascending;
+        rows = [...rows].sort((a, b) => {
+          const aNull = a[column] === null || a[column] === undefined;
+          const bNull = b[column] === null || b[column] === undefined;
+          if (aNull || bNull) {
+            if (aNull && bNull) return 0;
+            return aNull === nullsFirst ? -1 : 1;
+          }
+          const cmp = String(a[column]).localeCompare(String(b[column]));
+          return ascending ? cmp : -cmp;
+        });
+      }
+      return limitCount === null ? rows : rows.slice(0, limitCount);
+    }
+
     const builder: PostgrestFilterBuilder<Record<string, unknown>[]> = {
       select(_columns?: string) {
         return builder;
       },
       eq(column: string, value: unknown) {
         conditions.push((row) => row[column] === value);
+        return builder;
+      },
+      order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }) {
+        orderBy = {
+          column,
+          ascending: options?.ascending ?? true,
+          nullsFirst: options?.nullsFirst,
+        };
+        return builder;
+      },
+      limit(count: number) {
+        limitCount = count;
         return builder;
       },
       is(column: string, value: unknown) {
@@ -214,14 +280,14 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
         return builder;
       },
       async single<R = Record<string, unknown>>(): Promise<PostgrestSingleResponse<R>> {
-        const rows = recordsGetter().filter((row) => conditions.every((fn) => fn(row)));
+        const rows = resolveRows();
         if (rows.length === 0) {
           return { data: null, error: { message: 'Row not found' } };
         }
         return { data: rows[0] as unknown as R, error: null };
       },
       async maybeSingle<R = Record<string, unknown>>(): Promise<PostgrestSingleResponse<R>> {
-        const rows = recordsGetter().filter((row) => conditions.every((fn) => fn(row)));
+        const rows = resolveRows();
         if (rows.length === 0) {
           return { data: null, error: null };
         }
@@ -231,8 +297,46 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
         onfulfilled?: ((value: PostgrestResponse<Record<string, unknown>[]>) => TResult1 | PromiseLike<TResult1>) | null,
         onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
       ): Promise<TResult1 | TResult2> {
-        const rows = recordsGetter().filter((row) => conditions.every((fn) => fn(row)));
-        const res: PostgrestResponse<Record<string, unknown>[]> = { data: rows, error: null };
+        const res: PostgrestResponse<Record<string, unknown>[]> = { data: resolveRows(), error: null };
+        return Promise.resolve(res).then(onfulfilled, onrejected);
+      },
+    };
+
+    return builder;
+  }
+
+  /** Consulta que falla con el error de Postgres que se le pase. */
+  function makeErrorBuilder(error: {
+    message: string;
+    code?: string;
+  }): PostgrestFilterBuilder<Record<string, unknown>[]> {
+    const builder: PostgrestFilterBuilder<Record<string, unknown>[]> = {
+      select() {
+        return builder;
+      },
+      eq() {
+        return builder;
+      },
+      is() {
+        return builder;
+      },
+      order() {
+        return builder;
+      },
+      limit() {
+        return builder;
+      },
+      async single<R = Record<string, unknown>>(): Promise<PostgrestSingleResponse<R>> {
+        return { data: null, error };
+      },
+      async maybeSingle<R = Record<string, unknown>>(): Promise<PostgrestSingleResponse<R>> {
+        return { data: null, error };
+      },
+      then<TResult1 = PostgrestResponse<Record<string, unknown>[]>, TResult2 = never>(
+        onfulfilled?: ((value: PostgrestResponse<Record<string, unknown>[]>) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+      ): Promise<TResult1 | TResult2> {
+        const res: PostgrestResponse<Record<string, unknown>[]> = { data: null, error };
         return Promise.resolve(res).then(onfulfilled, onrejected);
       },
     };
@@ -265,6 +369,29 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
         },
         insert(values: Record<string, unknown> | Record<string, unknown>[]) {
           const list = Array.isArray(values) ? values : [values];
+          // Índices únicos de hackathon_salidas: una sola salida sin regreso por
+          // integrante (hackathon_salidas_una_abierta_idx) y un id por lectura.
+          if (table === 'hackathon_salidas') {
+            const abierta = (row: Record<string, unknown>) =>
+              row.regreso_en === null || row.regreso_en === undefined;
+            const choca = list.some(
+              (item) =>
+                (abierta(item) &&
+                  db.hackathon_salidas.some(
+                    (row) => row.integrante_id === item.integrante_id && abierta(row)
+                  )) ||
+                (item.salida_lectura_id != null &&
+                  db.hackathon_salidas.some(
+                    (row) => row.salida_lectura_id === item.salida_lectura_id
+                  ))
+            );
+            if (choca) {
+              return makeErrorBuilder({
+                code: '23505',
+                message: 'duplicate key value violates unique constraint on hackathon_salidas',
+              });
+            }
+          }
           const created: Array<Record<string, unknown>> = [];
           for (const item of list) {
             const newItem = { id: (item.id as string) || crypto.randomUUID(), ...item };
@@ -287,6 +414,26 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
             onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
           ) {
             const tableRows = getTableData(table);
+            // Índice único hackathon_salidas_regreso_lectura_id_idx.
+            const lecturaRegreso = updates.regreso_lectura_id;
+            if (
+              table === 'hackathon_salidas' &&
+              lecturaRegreso != null &&
+              tableRows.some(
+                (row) =>
+                  row.regreso_lectura_id === lecturaRegreso &&
+                  !conditions.every((fn) => fn(row))
+              )
+            ) {
+              const res: PostgrestResponse<Record<string, unknown>[]> = {
+                data: null,
+                error: {
+                  code: '23505',
+                  message: 'duplicate key value violates unique constraint on hackathon_salidas',
+                },
+              };
+              return Promise.resolve(res).then(onfulfilled, onrejected);
+            }
             for (const row of tableRows) {
               if (conditions.every((fn) => fn(row))) {
                 Object.assign(row, updates);

@@ -8,6 +8,8 @@ import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager/nfc_manager_android.dart';
 import 'package:nfc_manager/nfc_manager_ios.dart';
 
+import '../config/backend_config.dart';
+
 /// Tipo de registro NFC Forum RTD Text ('T').
 const int _rtdTextType = 0x54;
 
@@ -17,8 +19,32 @@ const int _utf16Flag = 0x80;
 /// Bits 0-5 del byte de estado RTD Text: longitud del código de idioma.
 const int _languageLengthMask = 0x3f;
 
-/// Resultado de una operación NFC. El payload siempre es el texto NDEF leído
-/// o escrito, por ejemplo: `staffapp:nfc:<token>`.
+/// Tipo de registro NFC Forum RTD URI ('U').
+const int _rtdUriType = 0x55;
+
+/// Abreviatura RTD URI de `https://`: ahorra esos 8 bytes en la tarjeta.
+const int _uriHttpsPrefix = 0x04;
+
+/// Paquete de la app en Android (`applicationId` en
+/// android/app/build.gradle.kts). Va en el AAR de las tarjetas con dirección.
+const String _androidPackage = 'com.stringbuilder.staffapp.staff_app';
+
+/// Prefijo de las credenciales que emite el backend.
+const String _payloadPrefix = 'staffapp:nfc:';
+
+/// Bytes NDEF de una NTAG213, la tarjeta más pequeña para la que se escribe la
+/// dirección (ver [NfcService.cardUrl]).
+const int _ntag213Capacity = 137;
+
+/// Final de la dirección de una tarjeta (ver [NfcService.cardUrl]): el evento
+/// y el token.
+final RegExp _cardUrlEnding = RegExp(
+  r'#[a-z]/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+  r'[0-9a-fA-F]{12})$',
+);
+
+/// Resultado de una operación NFC. El payload siempre es la credencial leída
+/// o escrita, por ejemplo: `staffapp:nfc:<token>`.
 class NfcOperationResult {
   const NfcOperationResult._({
     required this.success,
@@ -51,6 +77,17 @@ class NfcOperationResult {
   /// plataforma no lo admite. Reintentar no sirve hasta que cambie algo fuera
   /// de la app, así que quien lee en bucle tiene que parar aquí.
   final bool unavailable;
+}
+
+/// Evento de una tarjeta. Va en su dirección (ver [NfcService.cardUrl]) para
+/// que la página de `lector-web/` sepa a qué función de accesos llamar.
+enum NfcCardEvent {
+  hackathon('h'),
+  sitec('s');
+
+  const NfcCardEvent(this.code);
+
+  final String code;
 }
 
 /// Acceso NFC para Android e iOS.
@@ -130,12 +167,42 @@ class NfcService {
     await closed.future;
   }
 
-  /// Escribe el payload como registro NDEF de texto en la tarjeta que se
-  /// acerque al teléfono. En Android formatea la tarjeta si aún no tiene
-  /// estructura NDEF; iOS solo escribe en tarjetas que ya la traen.
+  /// Dirección que se graba en la tarjeta para abrirla desde un iPhone sin la
+  /// app: `<base>/#<evento>/<token>`, con [base] la página publicada de
+  /// `lector-web/` ([BackendConfig.cardWebUrl]). El token va tras `#`, que el
+  /// navegador no manda al servidor que publica la página.
+  ///
+  /// Devuelve null si no hay página configurada, si el payload no es una
+  /// credencial Staff o si la dirección no cabría en una NTAG213 (unos 38
+  /// caracteres entre dominio y ruta). Entonces la tarjeta se escribe como
+  /// siempre.
+  static String? cardUrl(
+    String payload, {
+    required NfcCardEvent event,
+    String base = BackendConfig.cardWebUrl,
+  }) {
+    final page = base.endsWith('/') ? base.substring(0, base.length - 1) : base;
+    if (page.isEmpty || !payload.startsWith(_payloadPrefix)) return null;
+    final token = payload.substring(_payloadPrefix.length);
+    final url = '$page/#${event.code}/$token';
+    if (!_cardUrlEnding.hasMatch(url)) return null;
+    // Las tarjetas vírgenes se formatean sin saber cuánto les cabe: una
+    // dirección que no entraría en la más pequeña no se usa.
+    return _buildUrlMessage(url).byteLength <= _ntag213Capacity ? url : null;
+  }
+
+  /// Escribe la credencial en la tarjeta que se acerque al teléfono. En
+  /// Android formatea la tarjeta si aún no tiene estructura NDEF; iOS solo
+  /// escribe en tarjetas que ya la traen.
+  ///
+  /// Sin [webUrl] la credencial va como registro de texto. Con [webUrl] (ver
+  /// [cardUrl]) va dentro de esa dirección, para que un iPhone sin la app abra
+  /// la tarjeta en Safari. Si la dirección no cabe, se escribe solo el texto.
+  /// La lectura entiende los dos formatos.
   Future<NfcOperationResult> writeTextPayload(
     String payload, {
     Duration timeout = defaultTimeout,
+    String? webUrl,
   }) {
     return _runSession(
       timeout: timeout,
@@ -146,7 +213,12 @@ class NfcService {
       successMessageIos: 'Tarjeta escrita',
       keepPollingIos: false,
       onTag: (tag, complete) async {
-        final message = _buildTextMessage(payload);
+        final text = _buildTextMessage(payload);
+        final withUrl = webUrl == null ? null : _buildUrlMessage(webUrl);
+        // Donde la dirección no cabe, el texto basta para la app: solo se
+        // pierde la lectura sin app en iPhone.
+        NdefMessage fitting(int capacity) =>
+            withUrl != null && withUrl.byteLength <= capacity ? withUrl : text;
 
         if (_isIos) {
           final ndef = NdefIos.from(tag);
@@ -168,6 +240,7 @@ class NfcService {
             );
             return;
           }
+          final message = fitting(ndef.capacity);
           if (message.byteLength > ndef.capacity) {
             complete(
               NfcOperationResult.error(
@@ -196,7 +269,9 @@ class NfcService {
             );
             return;
           }
-          await formatable.format(message);
+          // Sin estructura NDEF no se sabe cuánto cabe hasta formatear. Va la
+          // dirección: [cardUrl] solo da las que caben en una NTAG213.
+          await formatable.format(withUrl ?? text);
           complete(NfcOperationResult.success(payload));
           return;
         }
@@ -210,6 +285,7 @@ class NfcService {
           return;
         }
 
+        final message = fitting(ndef.maxSize);
         if (message.byteLength > ndef.maxSize) {
           complete(
             NfcOperationResult.error(
@@ -226,7 +302,8 @@ class NfcService {
     );
   }
 
-  /// Lee el texto NDEF de la tarjeta que se acerque al teléfono.
+  /// Lee la credencial de la tarjeta que se acerque al teléfono, escrita como
+  /// texto o como dirección (ver [writeTextPayload]).
   Future<NfcOperationResult> readTextPayload({
     Duration timeout = defaultTimeout,
   }) {
@@ -436,6 +513,35 @@ class NfcService {
     );
   }
 
+  /// La dirección va primero: el iPhone sin app solo abre la tarjeta si su
+  /// primer registro es una dirección. Detrás va un AAR, que Android busca en
+  /// todo el mensaje: con él, aunque el lector no esté armado, Android abre
+  /// esta app en vez de la dirección en el navegador, y el operador no sale de
+  /// la app. No cabe además el texto en una NTAG213, así que la credencial se
+  /// lee de la dirección.
+  static NdefMessage _buildUrlMessage(String url) {
+    final https = url.startsWith('https://');
+    return NdefMessage(
+      records: [
+        NdefRecord(
+          typeNameFormat: TypeNameFormat.wellKnown,
+          type: Uint8List.fromList([_rtdUriType]),
+          identifier: Uint8List(0),
+          payload: Uint8List.fromList([
+            if (https) _uriHttpsPrefix else 0x00,
+            ...utf8.encode(https ? url.substring('https://'.length) : url),
+          ]),
+        ),
+        NdefRecord(
+          typeNameFormat: TypeNameFormat.external,
+          type: Uint8List.fromList(ascii.encode('android.com:pkg')),
+          identifier: Uint8List(0),
+          payload: Uint8List.fromList(ascii.encode(_androidPackage)),
+        ),
+      ],
+    );
+  }
+
   String? _extractTextPayload(NdefMessage message) {
     for (final record in message.records) {
       // Solo registros RTD Text: una tarjeta puede traer además registros URI o
@@ -458,6 +564,30 @@ class NfcService {
       try {
         final text = utf8.decode(data.sublist(textStart));
         if (text.trim().isNotEmpty) return text.trim();
+      } catch (_) {
+        // Registro corrupto: se intenta con el siguiente.
+      }
+    }
+    return _extractUrlPayload(message);
+  }
+
+  /// Credencial de una tarjeta escrita con dirección: el token sale del final
+  /// de la dirección, sea cual sea la página, para que las tarjetas sigan
+  /// valiendo aunque la página cambie de sitio.
+  String? _extractUrlPayload(NdefMessage message) {
+    for (final record in message.records) {
+      if (record.typeNameFormat != TypeNameFormat.wellKnown) continue;
+      if (record.type.length != 1 || record.type.first != _rtdUriType) {
+        continue;
+      }
+
+      // El primer byte es la abreviatura del esquema, que aquí no hace falta.
+      final data = record.payload;
+      if (data.length < 2) continue;
+
+      try {
+        final match = _cardUrlEnding.firstMatch(utf8.decode(data.sublist(1)));
+        if (match != null) return '$_payloadPrefix${match.group(1)}';
       } catch (_) {
         // Registro corrupto: se intenta con el siguiente.
       }
