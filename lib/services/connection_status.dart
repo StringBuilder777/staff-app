@@ -22,14 +22,23 @@ class ConnectionStatus {
 
   static Timer? _timer;
 
-  /// Arranca el sondeo periódico. Es idempotente.
+  /// Pantallas que muestran la luz ahora mismo. Se apilan (SITEC, Registro,
+  /// lector…), y la que se cierra no debe dejar sin sondeo a la de debajo.
+  static int _users = 0;
+
+  /// Arranca el sondeo periódico si nadie lo había arrancado. Cada llamada
+  /// necesita su [stop].
   static void start() {
+    _users++;
     if (_timer != null) return;
     unawaited(check());
     _timer = Timer.periodic(_interval, (_) => unawaited(check()));
   }
 
+  /// Para el sondeo cuando ya no queda ninguna pantalla que lo use.
   static void stop() {
+    if (_users > 0) _users--;
+    if (_users > 0) return;
     _timer?.cancel();
     _timer = null;
   }

@@ -120,6 +120,57 @@ class IssueNfcResult {
   );
 }
 
+/// Asistente de SITEC tal como lo ve el registro.
+class SitecAsistente {
+  final String id;
+  final String fullName;
+
+  /// Cuándo se confirmó que su tarjeta está escrita; null si todavía no tiene.
+  final String? nfcIssuedAt;
+
+  const SitecAsistente({
+    required this.id,
+    required this.fullName,
+    this.nfcIssuedAt,
+  });
+
+  factory SitecAsistente.fromJson(Map<String, dynamic> json) => SitecAsistente(
+    id: json['id']?.toString() ?? '',
+    fullName: StaffBackendService._sitecName(json),
+    nfcIssuedAt: json['nfc_emitida_en']?.toString(),
+  );
+}
+
+class SitecAsistentesResult {
+  final bool success;
+  final int statusCode;
+  final List<SitecAsistente> asistentes;
+  final String? errorMessage;
+
+  const SitecAsistentesResult({
+    required this.success,
+    required this.statusCode,
+    this.asistentes = const [],
+    this.errorMessage,
+  });
+
+  factory SitecAsistentesResult.success(List<SitecAsistente> asistentes) =>
+      SitecAsistentesResult(
+        success: true,
+        statusCode: 200,
+        asistentes: asistentes,
+      );
+
+  factory SitecAsistentesResult.error({
+    required int statusCode,
+    required String message,
+  }) => SitecAsistentesResult(
+    success: false,
+    statusCode: statusCode,
+    errorMessage: message,
+  );
+}
+
 class ScanNfcResult {
   final bool success;
   final bool isDuplicate;
@@ -359,5 +410,165 @@ class StaffBackendService {
         errorMessage: 'No se pudo conectar con el servidor: $e',
       );
     }
+  }
+
+  /// 4. Escanea una tarjeta NFC en un punto de acceso de SITEC.
+  ///
+  /// SITEC valida contra sus propios asistentes y no tiene equipos, así que el
+  /// resultado llega sin [ScanNfcResult.teamName].
+  Future<ScanNfcResult> scanSitecNfc({
+    required String nfcToken,
+    required String accessType,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '${BackendConfig.functionsUrl}/staff-sitec-scan-nfc',
+      );
+      final response = await _client.post(
+        url,
+        headers: await _buildHeaders(),
+        body: jsonEncode({'nfcToken': nfcToken, 'accessType': accessType}),
+      );
+
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final asistente = body['asistente'] as Map<String, dynamic>?;
+
+      if (response.statusCode == 200) {
+        return ScanNfcResult(
+          success: true,
+          isDuplicate: false,
+          statusCode: 200,
+          accessType: body['accessType']?.toString() ?? accessType,
+          registeredAt: body['registeredAt']?.toString() ?? '',
+          participantName: _sitecName(asistente),
+          participantId: asistente?['id']?.toString() ?? '',
+        );
+      }
+
+      if (response.statusCode == 409) {
+        return ScanNfcResult(
+          success: false,
+          isDuplicate: true,
+          statusCode: 409,
+          accessType: body['accessType']?.toString() ?? accessType,
+          previouslyRegisteredAt:
+              body['previouslyRegisteredAt']?.toString() ?? '',
+          errorMessage: body['error']?.toString() ?? 'Acceso ya registrado',
+          participantName: _sitecName(asistente),
+        );
+      }
+
+      // Los errores propios de la plataforma, como una función todavía sin
+      // desplegar, traen `message` en vez de `error`.
+      return ScanNfcResult.error(
+        statusCode: response.statusCode,
+        errorMessage:
+            (body['error'] ?? body['message'])?.toString() ??
+            'Error al validar NFC',
+      );
+    } catch (e) {
+      return ScanNfcResult.error(
+        statusCode: 0,
+        errorMessage: 'No se pudo conectar con el servidor: $e',
+      );
+    }
+  }
+
+  /// 5. Lista a los asistentes de SITEC para el registro, en orden alfabético.
+  Future<SitecAsistentesResult> listSitecAsistentes() async {
+    try {
+      final url = Uri.parse(
+        '${BackendConfig.functionsUrl}/staff-sitec-asistentes',
+      );
+      final response = await _client.post(
+        url,
+        headers: await _buildHeaders(),
+        body: jsonEncode(<String, dynamic>{}),
+      );
+
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        final rawList = (body['asistentes'] as List<dynamic>?) ?? [];
+        return SitecAsistentesResult.success(
+          rawList
+              .map((e) => SitecAsistente.fromJson(e as Map<String, dynamic>))
+              .toList(),
+        );
+      }
+
+      // Los errores propios de la plataforma, como una función todavía sin
+      // desplegar, traen `message` en vez de `error`.
+      return SitecAsistentesResult.error(
+        statusCode: response.statusCode,
+        message:
+            (body['error'] ?? body['message'])?.toString() ??
+            'Error al obtener los asistentes',
+      );
+    } catch (e) {
+      return SitecAsistentesResult.error(
+        statusCode: 0,
+        message: 'No se pudo conectar con el servidor: $e',
+      );
+    }
+  }
+
+  /// 6. Emite la tarjeta NFC de un asistente de SITEC, en dos pasos: primero
+  /// pide el payload que se escribe y, con [written], confirma que la tarjeta
+  /// ya está escrita para que el registro la cuente.
+  ///
+  /// Devuelve el mismo [IssueNfcResult] que el hackathon, porque el registro
+  /// solo usa el payload y el token; [IssueNfcResult.integranteId] lleva aquí
+  /// el id del asistente.
+  Future<IssueNfcResult> issueSitecNfc(
+    String asistenteId, {
+    bool written = false,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '${BackendConfig.functionsUrl}/staff-sitec-issue-nfc',
+      );
+      final response = await _client.post(
+        url,
+        headers: await _buildHeaders(),
+        body: jsonEncode({'asistenteId': asistenteId, 'written': written}),
+      );
+
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode == 200) {
+        return IssueNfcResult.success(
+          integranteId: body['asistenteId']?.toString() ?? '',
+          nfcToken: body['nfcToken']?.toString() ?? '',
+          payload: body['payload']?.toString() ?? '',
+        );
+      }
+
+      return IssueNfcResult.error(
+        statusCode: response.statusCode,
+        message:
+            (body['error'] ?? body['message'])?.toString() ??
+            'Error al emitir NFC',
+      );
+    } catch (e) {
+      return IssueNfcResult.error(
+        statusCode: 0,
+        message: 'No se pudo conectar con el servidor: $e',
+      );
+    }
+  }
+
+  /// Nombre completo del asistente. Sin equipo que lo acompañe, el apellido es
+  /// lo que distingue en la puerta a dos asistentes que se llaman igual.
+  static String _sitecName(Map<String, dynamic>? asistente) {
+    final name = [asistente?['nombre'], asistente?['apellidos']]
+        .whereType<String>()
+        .map((part) => part.trim())
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+    return name.isEmpty ? 'Asistente' : name;
   }
 }

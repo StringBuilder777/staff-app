@@ -41,7 +41,39 @@ export interface MockDatabaseState {
     email?: string | null;
     [key: string]: unknown;
   }>;
+  /**
+   * Asistentes de SITEC: tabla propia, sin equipos. Las columnas de cada punto
+   * (`jueves_entrada_en`, `jueves_entrada_registrado_por`...) van por el índice.
+   */
+  sitec_asistentes: Array<{
+    id: string;
+    nombre: string;
+    apellidos?: string | null;
+    nfc_token?: string | null;
+    nfc_activa?: boolean;
+    nfc_ultimo_leido_en?: string | null;
+    // Datos que se carguen más adelante y nunca deben salir hacia la app:
+    correo?: string | null;
+    telefono?: string | null;
+    [key: string]: unknown;
+  }>;
 }
+
+/** Los seis puntos de SITEC sin registrar, como quedan al cargar un asistente. */
+const SITEC_ACCESOS_VACIOS = {
+  jueves_entrada_en: null,
+  jueves_entrada_registrado_por: null,
+  jueves_comida_en: null,
+  jueves_comida_registrado_por: null,
+  jueves_salida_en: null,
+  jueves_salida_registrado_por: null,
+  viernes_entrada_en: null,
+  viernes_entrada_registrado_por: null,
+  viernes_salida_en: null,
+  viernes_salida_registrado_por: null,
+  viernes_comida_en: null,
+  viernes_comida_registrado_por: null,
+};
 
 export function createInitialMockDatabaseState(): MockDatabaseState {
   return {
@@ -113,6 +145,28 @@ export function createInitialMockDatabaseState(): MockDatabaseState {
         email: 'luis.herrera@example.com',
       },
     ],
+    sitec_asistentes: [
+      {
+        id: 'sitec-asis-1',
+        nombre: 'Marta',
+        apellidos: 'Ruiz',
+        nfc_token: '6f1c2a9e-4b7d-4e2a-9c3f-1a2b3c4d5e6f',
+        nfc_activa: true,
+        nfc_ultimo_leido_en: null,
+        ...SITEC_ACCESOS_VACIOS,
+        correo: 'marta.ruiz@example.com',
+        telefono: '+528111111111',
+      },
+      {
+        id: 'sitec-asis-2',
+        nombre: 'Jorge',
+        apellidos: 'Salas',
+        nfc_token: '0d9e8f7a-6b5c-4d3e-8f2a-9b8c7d6e5f4a',
+        nfc_activa: false,
+        nfc_ultimo_leido_en: null,
+        ...SITEC_ACCESOS_VACIOS,
+      },
+    ],
   };
 }
 
@@ -131,6 +185,8 @@ export function createMockSupabaseClient(initialState: MockDatabaseState): Supab
         return db.equipos;
       case 'integrantes':
         return db.integrantes;
+      case 'sitec_asistentes':
+        return db.sitec_asistentes;
       default:
         return [];
     }

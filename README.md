@@ -12,6 +12,10 @@ Aplicación Flutter para el personal de eventos.
 flutter run
 ```
 
+## iOS
+
+La app de iOS solo necesita la firma con una cuenta de Apple Developer de pago. Los pasos para firmarla y subirla a TestFlight están en [ios/FIRMA.md](ios/FIRMA.md).
+
 ## Backend (Supabase Edge Functions)
 
 Consulta la documentación detallada y comandos en [supabase/README.md](file:///Users/stringbuilder/staffapp/supabase/README.md).

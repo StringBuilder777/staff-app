@@ -1,0 +1,27 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "road-to-tech",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "/Users/stringbuilder/road-to-tech",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "lector-web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8080",
+        "--directory",
+        "/Users/stringbuilder/staffapp/.claude/worktrees/sitec-kit/lector-web"
+      ],
+      "port": 8080
+    }
+  ]
+}

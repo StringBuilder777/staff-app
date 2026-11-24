@@ -4,6 +4,10 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Esta aplicación requiere acceso a la cámara para escanear los códigos QR de los equipos.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>Esta aplicación usa NFC para leer y escribir las tarjetas de acceso del evento.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

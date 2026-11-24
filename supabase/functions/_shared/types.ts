@@ -94,6 +94,92 @@ export interface ScanNfcDuplicateResponse {
   equipo: OperationalEquipo | null;
 }
 
+/**
+ * Puntos de acceso de SITEC, `<día>_<punto>`. Cada uno es un par de columnas
+ * en sitec_asistentes: `<punto>_en` y `<punto>_registrado_por`.
+ */
+export type SitecAccessType =
+  | 'jueves_entrada'
+  | 'jueves_comida'
+  | 'jueves_salida'
+  | 'viernes_entrada'
+  | 'viernes_salida'
+  | 'viernes_comida';
+
+export const VALID_SITEC_ACCESS_TYPES: readonly SitecAccessType[] = [
+  'jueves_entrada',
+  'jueves_comida',
+  'jueves_salida',
+  'viernes_entrada',
+  'viernes_salida',
+  'viernes_comida',
+] as const;
+
+export function isValidSitecAccessType(value: unknown): value is SitecAccessType {
+  return (
+    typeof value === 'string' && (VALID_SITEC_ACCESS_TYPES as readonly string[]).includes(value)
+  );
+}
+
+export interface OperationalSitecAsistente {
+  id: string;
+  nombre: string;
+  apellidos: string | null;
+  jueves_entrada_en: string | null;
+  jueves_comida_en: string | null;
+  jueves_salida_en: string | null;
+  viernes_entrada_en: string | null;
+  viernes_salida_en: string | null;
+  viernes_comida_en: string | null;
+}
+
+export interface SitecScanNfcRequest {
+  nfcToken: string;
+  accessType: SitecAccessType;
+}
+
+export interface SitecScanNfcAcceptedResponse {
+  status: 'accepted';
+  accessType: SitecAccessType;
+  registeredAt: string;
+  asistente: OperationalSitecAsistente;
+}
+
+export interface SitecScanNfcDuplicateResponse {
+  status: 'duplicate';
+  error: string;
+  accessType: SitecAccessType;
+  previouslyRegisteredAt: string;
+  asistente: OperationalSitecAsistente;
+}
+
+/**
+ * Asistente de SITEC tal como lo ve el registro: lo justo para encontrarlo por
+ * nombre y saber si ya tiene la tarjeta escrita. Nunca lleva el token NFC.
+ */
+export interface SitecRegistroAsistente {
+  id: string;
+  nombre: string;
+  apellidos: string | null;
+  nfc_emitida_en: string | null;
+}
+
+export interface SitecAsistentesResponse {
+  asistentes: SitecRegistroAsistente[];
+}
+
+export interface SitecIssueNfcRequest {
+  asistenteId: string;
+  /** true cuando la app confirma que ya escribió la tarjeta. */
+  written?: boolean;
+}
+
+export interface SitecIssueNfcResponse {
+  asistenteId: string;
+  nfcToken: string;
+  payload: string; // Exactly `staffapp:nfc:<nfcToken>`
+}
+
 export interface ApiErrorResponse {
   error: string;
   details?: unknown;
