@@ -1,20 +1,26 @@
 # Staff App
 
-Aplicación Flutter para el personal de eventos.
+Herramientas para el personal de eventos. En Android se usa la app Flutter y en iPhone se registran accesos desde Safari.
 
 - Registro de equipo mediante QR y emisión individual de tarjetas NFC.
 - Validación de accesos para check-in, desayuno y comida.
 - Estados de interfaz simulados mientras se integran las APIs y el hardware NFC/QR.
 
-## Ejecutar
+## Ejecutar la app en Android
 
 ```bash
 flutter run
 ```
 
-## iOS
+## Registrar accesos en iPhone
 
-La app de iOS solo necesita la firma con una cuenta de Apple Developer de pago. Los pasos para firmarla y subirla a TestFlight están en [ios/FIRMA.md](ios/FIRMA.md).
+En iPhone, el flujo de registro de accesos se realiza en Safari sin instalar una app nativa. La tarjeta NFC debe llevar grabado el enlace HTTPS del lector web.
+
+1. Abre el lector web en Safari, inicia sesión con tu cuenta de staff y elige el evento y el punto de acceso.
+2. Con el iPhone desbloqueado, acerca la tarjeta NFC a la parte superior del teléfono.
+3. Toca «Abrir en Safari» y confirma en pantalla que se registró el acceso.
+
+La implementación del lector web y las instrucciones para publicarlo están en `lector-web/README.md` de la rama `feat/iphone-web`. Para emitir tarjetas compatibles, la versión de la app que las graba se compila con `--dart-define=CARD_WEB_URL=<URL del lector>`.
 
 ## Backend (Supabase Edge Functions)
 
